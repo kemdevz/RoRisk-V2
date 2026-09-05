@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import SiteIcon from './Icons'
+import SiteIcon from '../components/Icons'
 
 const banners = [
   { src: '/Banners/rewards.52a9b29c.png', alt: 'Claim your free rewards', width: 1080, height: 420 },
@@ -220,7 +220,7 @@ function HomeBanner() {
   )
 }
 
-function HomeWelcome() {
+function HomeWelcome({ onRewards }) {
   return (
     <div className="home-welcome" data-v-21735a18="" data-v-30c4bf74="">
       <div className="welcome-panel" data-v-21735a18="">
@@ -244,7 +244,7 @@ function HomeWelcome() {
             </div>
             <div className="box-level level-blue" data-v-ff759fba="" data-v-21735a18=""><div className="level-inner" data-v-ff759fba="">1</div></div>
           </div>
-          <button className="rewards-btn" type="button" data-v-21735a18="">View Daily Rewards</button>
+          <button className="rewards-btn" type="button" onClick={onRewards} data-v-21735a18="">View Daily Rewards</button>
         </div>
         <div className="welcome-visual" aria-hidden="true" data-v-21735a18="">
           <img className="welcome-item" src="/federation.png" alt="" data-v-21735a18="" />
@@ -501,13 +501,13 @@ function HomeInfoBanner() {
     <div className="home-info-banner-container" data-v-8631d556="" data-v-30c4bf74="">
       <div className="home-info-banner" data-v-8631d556="">
         {cards.map(([color, icon, title, description, href]) => (
-          <div className="banner-item" data-v-8631d556="" key={title} role="link" tabIndex="0" onClick={() => { window.location.href = href }} onKeyDown={(event) => { if (event.key === 'Enter') window.location.href = href }}>
+          <a className="banner-item" data-v-8631d556="" key={title} href={href}>
             <div className={`info-banner-item ${color}`} data-v-8631d556="">
               <div className={`info-banner-item-icon ${color}`} data-v-8631d556=""><SiteIcon name={icon} className={`icon-${icon} ${color}`} data-v-8631d556="" /></div>
               <div className="info-banner-item-title" data-v-8631d556=""><h2 data-v-8631d556="">{title}</h2></div>
               <div className="info-banner-item-description" data-v-8631d556=""><p data-v-8631d556="">{description}</p></div>
             </div>
-          </div>
+          </a>
         ))}
       </div>
     </div>
@@ -604,10 +604,19 @@ function Bets() {
   )
 }
 
-function Homepage() {
+function Home() {
+  const openRewards = () => {
+    window.history.pushState({}, '', '/rewards')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
+  useEffect(() => {
+    document.title = 'RoRisk.com - #1 Roblox Arcade Platform'
+  }, [])
+
   return (
     <div className="home" data-v-30c4bf74="">
-      <div className="home-top" data-v-30c4bf74=""><HomeWelcome /><HomeBanner /></div>
+      <div className="home-top" data-v-30c4bf74=""><HomeWelcome onRewards={openRewards} /><HomeBanner /></div>
       <HomeGames />
       <HomeInfoBanner />
       <HomeMethods />
@@ -616,4 +625,4 @@ function Homepage() {
   )
 }
 
-export default Homepage
+export default Home

@@ -212,6 +212,13 @@ function LoginContentTransition({ tab, credentialsTab, setTab }) {
   const contentRef = useRef(null)
   const enteringRef = useRef(false)
   const transitionRef = useRef(0)
+  const leaveTimerRef = useRef(null)
+  const enterTimerRef = useRef(null)
+
+  useEffect(() => () => {
+    if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current)
+    if (enterTimerRef.current !== null) window.clearTimeout(enterTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (requestedView === displayedView) return undefined
@@ -220,19 +227,24 @@ function LoginContentTransition({ tab, credentialsTab, setTab }) {
 
     const transition = transitionRef.current + 1
     transitionRef.current = transition
-    const height = element.scrollHeight
-    const animation = element.animate(
-      [{ height: `${height}px`, opacity: 1 }, { height: '0px', opacity: 0 }],
-      { duration: 400, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' },
-    )
+    if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current)
+    element.style.height = `${element.scrollHeight}px`
+    element.style.opacity = '1'
+    element.style.transform = 'translateY(0)'
+    element.getBoundingClientRect()
+    element.style.height = '0px'
+    element.style.opacity = '0'
+    element.style.transform = 'translateY(10px)'
 
-    animation.finished.then(() => {
+    leaveTimerRef.current = window.setTimeout(() => {
       if (transitionRef.current !== transition) return
       enteringRef.current = true
       setDisplayedView(requestedView)
-    }).catch(() => {})
+    }, 400)
 
-    return () => animation.cancel()
+    return () => {
+      if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current)
+    }
   }, [displayedView, requestedView])
 
   useLayoutEffect(() => {
@@ -241,22 +253,28 @@ function LoginContentTransition({ tab, credentialsTab, setTab }) {
     const element = contentRef.current
     if (!element) return undefined
 
+    element.style.height = 'auto'
     const height = element.scrollHeight
-    const animation = element.animate(
-      [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }],
-      { duration: 400, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' },
-    )
+    element.style.height = '0px'
+    element.style.opacity = '0'
+    element.style.transform = 'translateY(10px)'
+    element.getBoundingClientRect()
+    element.style.height = `${height}px`
+    element.style.opacity = '1'
+    element.style.transform = 'translateY(0)'
 
-    animation.finished.then(() => {
+    enterTimerRef.current = window.setTimeout(() => {
       element.style.height = 'auto'
       element.style.opacity = '1'
-      animation.cancel()
-    }).catch(() => {})
+      element.style.transform = 'translateY(0)'
+    }, 400)
 
-    return () => animation.cancel()
+    return () => {
+      if (enterTimerRef.current !== null) window.clearTimeout(enterTimerRef.current)
+    }
   }, [displayedView])
 
-  return <div ref={contentRef} className="content-auth" {...loginScope}>{displayedView === 'roblox' ? <RobloxForm setTab={setTab} /> : <CredentialsTransition tab={credentialsTab} setTab={setTab} />}</div>
+  return <div ref={contentRef} className="content-auth auth-content-swap" {...loginScope}>{displayedView === 'roblox' ? <RobloxForm setTab={setTab} /> : <CredentialsTransition tab={credentialsTab} setTab={setTab} />}</div>
 }
 
 function SigninModal({ initialTab, onClose }) {

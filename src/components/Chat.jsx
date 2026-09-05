@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import chatEmojis from '../assets/ChatEmojis'
 import SiteIcon from './Icons'
 
 const scope = { 'data-v-7b767a0f': '' }
@@ -101,13 +100,13 @@ function RainJoin({ amount, timer, joined, onJoin }) {
   return <div className="rain-join" {...rainJoinScope} {...scope}><div className="rain-info" {...rainJoinScope}><div className="rain-info-container" {...rainJoinScope}><div className="rain-info-title-container" {...rainJoinScope}><div className="rain-amount" {...rainJoinScope}><img src="/coin.svg" alt="icon" {...rainJoinScope} /><span className="animated-number" {...rainJoinScope}>{amount.toLocaleString()}</span></div><div className="rain-info-title" {...rainJoinScope}><span {...rainJoinScope}>It's raining now!</span></div></div><div className="rain-timer" {...rainJoinScope}><TimerIcon join /><span {...rainJoinScope}>{formatTimer(timer)}</span></div></div><div className="rain-buttons" {...rainJoinScope}><button className="join-btn" type="button" disabled={joined} onClick={onJoin} {...rainJoinScope}><span {...rainJoinScope}>{joined ? 'Already Joined' : 'Join Rain'} <span className="rain-players" {...rainJoinScope}><PeopleIcon /><span {...rainJoinScope}>{joined ? 1 : 0}</span></span></span></button></div></div></div>
 }
 
-function MessageContent({ text }) {
-  const emojiMap = useMemo(() => new Map(chatEmojis.map((emoji) => [emoji.code, emoji.src])), [])
+function MessageContent({ text, emojis }) {
+  const emojiMap = useMemo(() => new Map(emojis.map((emoji) => [emoji.code, emoji.src])), [emojis])
   return text.split(/:([a-z0-9][a-z0-9_-]*):/gi).map((part, index) => emojiMap.has(part.toLowerCase()) ? <img className="chat-emoji" src={emojiMap.get(part.toLowerCase())} alt={`:${part}:`} title={`:${part}:`} key={`${part}-${index}`} {...messageScope} /> : <span key={`${part}-${index}`} {...messageScope}>{part}</span>)
 }
 
-function ChatMessage({ message }) {
-  return <div className="chat-message-element" {...messageScope} {...scope}><div className="element-message" {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src="/default-avatar.png" alt={message.username} data-v-6adb23f8="" /></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{message.username}</span></div><div className="element-text" {...messageScope}><MessageContent text={message.text} /></div></div></button></div></div></div></div>
+function ChatMessage({ message, emojis }) {
+  return <div className="chat-message-element" {...messageScope} {...scope}><div className="element-message" {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src="/default-avatar.png" alt={message.username} data-v-6adb23f8="" /></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{message.username}</span></div><div className="element-text" {...messageScope}><MessageContent text={message.text} emojis={emojis} /></div></div></button></div></div></div></div>
 }
 
 /*
@@ -133,7 +132,8 @@ function Chat({ onToggle }) {
   const [rainAmount] = useState(0)
   const [rainTimer, setRainTimer] = useState(0)
   const [joinedRain, setJoinedRain] = useState(false)
-  const [emojiButton] = useState(() => chatEmojis[Math.floor(Math.random() * chatEmojis.length)])
+  const [chatEmojis, setChatEmojis] = useState([])
+  const [emojiButton, setEmojiButton] = useState({ code: 'hahaa', src: '/emojis/1000-hahaa.ab605861.png' })
   const chatRef = useRef(null)
   const languageRef = useRef(null)
   const emojiRef = useRef(null)
@@ -141,6 +141,18 @@ function Chat({ onToggle }) {
   const messagesRef = useRef(null)
 
   useEffect(() => { onToggle?.(isChatOpen) }, [isChatOpen, onToggle])
+  useEffect(() => {
+    let active = true
+    fetch('/emojis/emojis.json')
+      .then((response) => response.json())
+      .then((emojis) => {
+        if (!active || !Array.isArray(emojis) || emojis.length === 0) return
+        setChatEmojis(emojis)
+        setEmojiButton(emojis[Math.floor(Math.random() * emojis.length)])
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
   useEffect(() => { if (rainTimer <= 0) return undefined; const timer = window.setTimeout(() => setRainTimer((value) => Math.max(0, value - 1)), 1000); return () => window.clearTimeout(timer) }, [rainTimer])
   useEffect(() => { messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: 'smooth' }) }, [messages])
   useEffect(() => {
@@ -165,7 +177,7 @@ function Chat({ onToggle }) {
         <div className="chat-content" {...scope}>
           <div className="chat-shadow" {...scope} />
           <div ref={messagesRef} className="content-messages" {...scope}>
-            <div className="messages-list" {...scope}>{messages.map((message) => <ChatMessage message={message} key={message.id} />)}</div>
+            <div className="messages-list" {...scope}>{messages.map((message) => <ChatMessage message={message} emojis={chatEmojis} key={message.id} />)}</div>
           </div>
         </div>
         {rainTimer > 0 && <div className="content-rain" {...scope}><RainJoin amount={rainAmount} timer={rainTimer} joined={joinedRain} onJoin={() => setJoinedRain(true)} /></div>}

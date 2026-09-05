@@ -43,7 +43,7 @@ function NavbarLogo() {
   )
 }
 
-function Header({ onSignIn, onRegister }) {
+function Header({ pathname, onSignIn, onRegister }) {
   return (
     <div className="app-header" bis_skin_checked="1">
       <nav data-v-1cdc1483="" id="navbar" className="navbar-guest">
@@ -51,8 +51,8 @@ function Header({ onSignIn, onRegister }) {
           <a
             data-v-1cdc1483=""
             href="/"
-            aria-current="page"
-            className="router-link-exact-active router-link-active"
+            aria-current={pathname === '/' ? 'page' : undefined}
+            className={pathname === '/' ? 'router-link-exact-active router-link-active' : undefined}
           >
             <NavbarLogo />
           </a>
@@ -61,7 +61,7 @@ function Header({ onSignIn, onRegister }) {
             className="navbar-left-actions"
             bis_skin_checked="1"
           >
-            <a data-v-1cdc1483="" href="/rewards" className="navbar-claim-cases">
+            <a data-v-1cdc1483="" href="/rewards" aria-current={pathname === '/rewards' ? 'page' : undefined} className={`navbar-claim-cases${pathname === '/rewards' ? ' router-link-active' : ''}`}>
               <svg
                 data-v-1cdc1483=""
                 xmlns="http://www.w3.org/2000/svg"

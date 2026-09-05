@@ -21,7 +21,7 @@ const more = [
   ['support', 'Support', '#support'],
 ]
 
-function SidebarSection({ title, items, showLabels }) {
+function SidebarSection({ title, items, showLabels, pathname }) {
   const [open, setOpen] = useState(true)
   return (
     <section className="sidebar-content" data-v-4fc2a52c="">
@@ -39,7 +39,7 @@ function SidebarSection({ title, items, showLabels }) {
               {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
             </button>
             ) : (
-              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}`} href={href} key={label} data-v-4fc2a52c="">
+              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}${pathname === href ? ' router-link-active' : ''}`} href={href} aria-current={pathname === href ? 'page' : undefined} key={label} data-v-4fc2a52c="">
                 <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
                 {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
               </a>
@@ -51,7 +51,7 @@ function SidebarSection({ title, items, showLabels }) {
   )
 }
 
-function Sidebar() {
+function Sidebar({ pathname }) {
   const [width, setWidth] = useState(window.innerWidth)
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1200)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1200)
@@ -75,7 +75,7 @@ function Sidebar() {
     <aside id="sidebar" className={`${desktopIconRail ? 'sidebar-collapsed ' : ''}${sidebarOpen ? 'sidebar-open' : ''}`.trim()} data-v-4fc2a52c="">
       <button className="sidebar-toggle" aria-label={desktop ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : (sidebarOpen ? 'Close menu' : 'Open menu')} onClick={toggleSidebar} data-v-4fc2a52c=""><span data-v-4fc2a52c="" /><span data-v-4fc2a52c="" /><span data-v-4fc2a52c="" /></button>
       <div className="sidebar-inner-content" data-v-4fc2a52c="">
-        <SidebarSection title="Games" items={games} showLabels={showLabels} />
+        <SidebarSection title="Games" items={games} showLabels={showLabels} pathname={pathname} />
         {showLabels && (
           <a className="sidebar-race-banner" href="/race" data-v-9e395626="">
             <img className="sidebar-race-art" src="/race2.57df575d.png" alt="RoRisk weekly race" data-v-9e395626="" />
@@ -85,7 +85,7 @@ function Sidebar() {
             </div>
           </a>
         )}
-        <SidebarSection title="More" items={more} showLabels={showLabels} />
+        <SidebarSection title="More" items={more} showLabels={showLabels} pathname={pathname} />
       </div>
     </aside>
   )

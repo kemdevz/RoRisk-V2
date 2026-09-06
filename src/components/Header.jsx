@@ -1,7 +1,228 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import SiteIcon from './Icons'
+
+const cashierScope = { 'data-v-d934db46': '' }
+const userScope = { 'data-v-37d0061e': '' }
+const notificationScope = { 'data-v-16e4a512': '' }
+
+function useDropdownTransition(duration, transitionName) {
+  const [phase, setPhase] = useState('closed')
+  const phaseRef = useRef('closed')
+  const frameRef = useRef(null)
+  const timerRef = useRef(null)
+
+  const clearPending = useCallback(() => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    frameRef.current = null
+    timerRef.current = null
+  }, [])
+  const update = useCallback((value) => {
+    phaseRef.current = value
+    setPhase(value)
+  }, [])
+  const close = useCallback(() => {
+    if (phaseRef.current === 'closed' || phaseRef.current === 'leave') return
+    clearPending()
+    update('leave')
+    timerRef.current = window.setTimeout(() => update('closed'), duration)
+  }, [clearPending, duration, update])
+  const open = useCallback(() => {
+    clearPending()
+    update('enter')
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = requestAnimationFrame(() => {
+        update('open')
+        frameRef.current = null
+      })
+    })
+  }, [clearPending, update])
+  const toggle = useCallback(() => {
+    if (phaseRef.current === 'closed' || phaseRef.current === 'leave') open()
+    else close()
+  }, [close, open])
+
+  useEffect(() => () => clearPending(), [clearPending])
+
+  const transitionClass = phase === 'enter'
+    ? `${transitionName}-enter-active ${transitionName}-enter`
+    : phase === 'leave'
+      ? `${transitionName}-leave-active ${transitionName}-leave-to`
+      : phase === 'open'
+        ? `${transitionName}-enter-active`
+        : ''
+
+  return { close, expanded: phase !== 'closed' && phase !== 'leave', rendered: phase !== 'closed', toggle, transitionClass }
+}
+
+function userLevelData(user) {
+  const xp = Number(user?.xp)
+  if (Number.isFinite(xp) && xp > 0) {
+    const level = Math.min(100, Math.floor(Math.cbrt(xp / 1000 / 50)))
+    if (level >= 100) return { level, progress: 100 }
+    const start = 1000 * (level ** 3) * 50
+    const end = 1000 * ((level + 1) ** 3) * 50
+    return { level, progress: Math.min(100, Math.max(0, ((xp - start) / (end - start)) * 100)) }
+  }
+  return { level: Math.min(100, Math.max(0, Number(user?.level) || 0)), progress: 0 }
+}
+
+function formatBalance(value) {
+  return Math.floor(Number(value) || 0).toLocaleString('en-US')
+}
+
+function levelTheme(level) {
+  if (level >= 100) return 'red'
+  if (level >= 75) return 'orange'
+  if (level >= 50) return 'purple'
+  if (level >= 25) return 'green'
+  return 'blue'
+}
+
+function RankBadge({ rank, className = '' }) {
+  if (!['admin', 'mod', 'partner'].includes(rank)) return null
+  return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
+}
+
+function NavbarCashier({ user }) {
+  const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
+  const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
+  const areaRef = useRef(null)
+  const isRoCoins = currency === 'rocoins'
+  const balance = isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)
+  const currencyIcon = isRoCoins ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
+  const alternateIcon = isRoCoins ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
+  const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
+  const alternateLabel = isRoCoins ? 'Coins' : 'RoCoins'
+
+  const selectCurrency = () => {
+    window.localStorage.setItem('currency', alternateCurrency)
+    setCurrency(alternateCurrency)
+    closeDropdown()
+  }
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!areaRef.current?.contains(event.target)) closeDropdown()
+    }
+    const closeOnEscape = (event) => { if (event.key === 'Escape') closeDropdown() }
+    document.addEventListener('click', handleOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('click', handleOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [closeDropdown])
+
+  return (
+    <div className="navbar-cashier" {...cashierScope}>
+      <div className="cashier-container" {...cashierScope}>
+        <div className="balance-area" ref={areaRef} {...cashierScope}>
+          <div className="cashier-balance" {...cashierScope}>
+            <div className={`balance-inner ${isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
+              <span className="balance-inner-left" {...cashierScope}>
+                <img src={currencyIcon} alt="icon" {...cashierScope} />
+                <span className="cashier-balance-text" {...cashierScope}>{formatBalance(balance)}</span>
+              </span>
+              <span className="balance-inner-right" {...cashierScope}>
+                <span className={`currency-badge navbar-currency-badge ${isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
+              </span>
+            </div>
+          </div>
+          {rendered && (
+            <div className={`currency-dropdown ${transitionClass}`.trim()} {...cashierScope}>
+              <div className="currency-dropdown-options" {...cashierScope}>
+                <button className="currency-dropdown-option currency-change-option" type="button" onClick={selectCurrency} {...cashierScope}>
+                  <img src={alternateIcon} alt="" {...cashierScope} />
+                  <span className="currency-change-copy" {...cashierScope}><span className="currency-change-label" {...cashierScope}>Change to <strong className={isRoCoins ? 'coin-text' : 'rocoin-text'} {...cashierScope}>{alternateLabel}</strong></span></span>
+                  <span className="currency-info-wrap" onClick={(event) => event.stopPropagation()} {...cashierScope}>
+                    <button className="currency-info-btn" type="button" aria-label="Currency information" {...cashierScope}><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...cashierScope}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" /><path d="M12 11v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="8" r="1.25" fill="currentColor" /></svg></button>
+                    <span className="currency-info-tooltip" role="tooltip" {...cashierScope}>{isRoCoins ? 'Coins are for crypto deposits and withdrawals. This balance is separate from RoCoins.' : 'RoCoins are for Robux and Limiteds. This balance is separate from Coins.'}</span>
+                  </span>
+                </button>
+                <div className="currency-dropdown-divider" aria-hidden="true" {...cashierScope} />
+                <button className="currency-dropdown-option vault-option" type="button" {...cashierScope}><SiteIcon name="vault" {...cashierScope} /><span {...cashierScope}>Vault</span></button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NavbarNotifications() {
+  const [open, setOpen] = useState(false)
+  const areaRef = useRef(null)
+  useEffect(() => {
+    const close = (event) => {
+      if (!areaRef.current?.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [])
+  return (
+    <div className="notification-area" ref={areaRef} {...notificationScope}>
+      <button className="button-notifications" type="button" aria-label="Notifications" aria-expanded={open} onClick={() => setOpen((value) => !value)} {...notificationScope}>
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" {...notificationScope}><path d="M255.9 456c31.1 0 48.1-22 48.1-53h-96.3c0 31 17 53 48.2 53zM412 352.2c-15.4-20.3-45.7-32.2-45.7-123.1 0-93.3-41.2-130.8-79.6-139.8-3.6-.9-6.2-2.1-6.2-5.9v-2.9c0-13.4-11-24.7-24.4-24.6-13.4-.2-24.4 11.2-24.4 24.6v2.9c0 3.7-2.6 5-6.2 5.9-38.5 9.1-79.6 46.5-79.6 139.8 0 90.9-30.3 102.7-45.7 123.1-9.9 13.1-.5 31.8 15.9 31.8h280.1c16.3 0 25.7-18.8 15.8-31.8z" fill="currentColor" /></svg>
+      </button>
+      <div className={`notifications-panel${open ? ' panel-active' : ''}`} {...notificationScope}>
+        <div className="panel-header" {...notificationScope}><h3 {...notificationScope}>Notifications</h3></div>
+        <div className="panel-content" {...notificationScope}><p className="no-notifications" {...notificationScope}>No notifications yet.</p></div>
+        <div className="panel-footer" {...notificationScope}><button className="clear-all" type="button" {...notificationScope}>Clear All</button></div>
+      </div>
+    </div>
+  )
+}
+
+function NavbarUser({ user, onSignOut }) {
+  const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(150, 'language-menu')
+  const menuRef = useRef(null)
+  const { level, progress } = userLevelData(user)
+  const avatar = user?.avatar_headshot || user?.avatar || '/default-avatar.png'
+  const rank = String(user?.rank || 'user').toLowerCase()
+  const hasStaffRank = rank !== 'user'
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!menuRef.current?.contains(event.target)) closeDropdown()
+    }
+    document.addEventListener('click', handleOutsideClick)
+    return () => document.removeEventListener('click', handleOutsideClick)
+  }, [closeDropdown])
+
+  const navigate = (path) => {
+    closeDropdown()
+    if (path === '/rewards') {
+      window.history.pushState({}, '', path)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }
+  }
+
+  return (
+    <div className="navbar-user" ref={menuRef} {...userScope}>
+      <button className={`navbar-user-dropdown${expanded ? ' navbar-user-dropdown-open' : ''}`} type="button" aria-expanded={expanded} onClick={toggle} {...userScope}>
+        <div className="user-button" {...userScope}><div className="avatar-image user-pfp-image" data-v-6adb23f8="" {...userScope}><img src={avatar} alt="avatar" data-v-6adb23f8="" {...userScope} /></div></div>
+        <div className="user-meta" {...userScope}>
+          <div className="user-info" {...userScope}>{hasStaffRank ? <RankBadge rank={rank} /> : <div className={`box-level level-${levelTheme(level)}`} data-v-ff759fba=""><div className="level-inner" data-v-ff759fba="">{level}</div></div>}<div className="username" {...userScope}>{user?.username || 'Loading...'}</div></div>
+          <div className="user-xp" title={`Level ${level}`} {...userScope}><div className="user-xp-fill" style={{ width: `${progress}%` }} {...userScope} /></div>
+        </div>
+        <div className="icon-dropdown-wrapper" {...userScope}><SiteIcon name="chevron-down" className={`icon-dropdown${expanded ? ' icon-dropdown-open' : ''}`} {...userScope} /></div>
+      </button>
+      {rendered && (
+        <div className={`user-dropdown-menu ${transitionClass}`.trim()} {...userScope}>
+          {[['bets', 'Statistics'], ['wallet', 'Transactions'], ['affiliates', 'Affiliates'], ['rewards', 'Redeem'], ['settings', 'Settings']].map(([icon, label]) => (
+            <button type="button" key={label} onClick={() => navigate(label === 'Redeem' ? '/rewards' : '')} {...userScope}><SiteIcon name={icon} className="user-dropdown-icon" {...userScope} /><span {...userScope}>{label}</span></button>
+          ))}
+          <button className="user-dropdown-logout" type="button" onClick={onSignOut} {...userScope}><SiteIcon name="back" className="user-dropdown-icon" {...userScope} /><span {...userScope}>Sign Out</span></button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function NavbarLogo() {
-  const logoMediaQuery = '(min-width: 1800px)'
+  const logoMediaQuery = '(min-width: 1301px)'
   const [showVideoLogo, setShowVideoLogo] = useState(() =>
     window.matchMedia(logoMediaQuery).matches,
   )
@@ -43,10 +264,10 @@ function NavbarLogo() {
   )
 }
 
-function Header({ pathname, onSignIn, onRegister }) {
+function Header({ pathname, user, onSignIn, onRegister, onSignOut }) {
   return (
     <div className="app-header" bis_skin_checked="1">
-      <nav data-v-1cdc1483="" id="navbar" className="navbar-guest">
+      <nav data-v-1cdc1483="" id="navbar" className={user ? undefined : 'navbar-guest'}>
         <div data-v-1cdc1483="" className="navbar-left" bis_skin_checked="1">
           <a
             data-v-1cdc1483=""
@@ -111,9 +332,9 @@ function Header({ pathname, onSignIn, onRegister }) {
             </a>
           </div>
         </div>
-        <div data-v-1cdc1483="" className="navbar-mid" bis_skin_checked="1" />
+        <div data-v-1cdc1483="" className="navbar-mid" bis_skin_checked="1">{user && <NavbarCashier user={user} />}</div>
         <div data-v-1cdc1483="" className="navbar-right" bis_skin_checked="1">
-          <div
+          {!user ? <div
             data-v-48b2574b=""
             data-v-1cdc1483=""
             className="auth-button-wrap"
@@ -135,7 +356,15 @@ function Header({ pathname, onSignIn, onRegister }) {
             >
               Register
             </button>
-          </div>
+          </div> : <>
+            <div className="navbar-cashier-actions" data-v-1cdc1483="">
+              <button className="navbar-action-btn navbar-action-btn-deposit" type="button" aria-label="Deposit" data-v-1cdc1483=""><span className="navbar-action-label" data-v-1cdc1483="">Deposit</span><span className="navbar-action-plus" aria-hidden="true" data-v-1cdc1483="">+</span></button>
+              <button className="navbar-action-btn navbar-action-btn-withdraw" type="button" data-v-1cdc1483="">Withdraw</button>
+            </div>
+            <div className="divider-vertical" aria-hidden="true" data-v-1cdc1483="" />
+            <NavbarNotifications />
+            <NavbarUser user={user} onSignOut={onSignOut} />
+          </>}
         </div>
       </nav>
     </div>

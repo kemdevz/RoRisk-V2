@@ -9,6 +9,10 @@ const fallbackPaths = {
   'chevron-left': 'M15 5l-7 7 7 7',
   'chevron-right': 'M9 5l7 7-7 7',
   'chevron-down': 'M5 9l7 7 7-7',
+  wallet: 'M19 7H4.5C3.67 7 3 6.55 3 6C3 5.45 3.67 5 4.5 5H17C17.55 5 18 4.55 18 4C18 3.45 17.55 3 17 3H4.5C2.57 3 1 4.35 1 6V18C1 19.65 2.57 21 4.5 21H19C20.65 21 22 19.88 22 18.5V9.5C22 8.12 20.65 7 19 7ZM17.5 15.5C16.67 15.5 16 14.83 16 14C16 13.17 16.67 12.5 17.5 12.5C18.33 12.5 19 13.17 19 14C19 14.83 18.33 15.5 17.5 15.5Z',
+  vault: 'M4 3C2.9 3 2 3.9 2 5V17C2 18.1 2.9 19 4 19H5V20C5 20.55 5.45 21 6 21C6.55 21 7 20.55 7 20V19H17V20C17 20.55 17.45 21 18 21C18.55 21 19 20.55 19 20V19H20C21.1 19 22 18.1 22 17V5C22 3.9 21.1 3 20 3H4ZM13 11C13 13.21 11.21 15 9 15C6.79 15 5 13.21 5 11C5 8.79 6.79 7 9 7C11.21 7 13 8.79 13 11ZM11 11C11 12.1 10.1 13 9 13C7.9 13 7 12.1 7 11C7 9.9 7.9 9 9 9C10.1 9 11 9.9 11 11ZM18 8C18.55 8 19 8.45 19 9V13C19 13.55 18.55 14 18 14C17.45 14 17 13.55 17 13V9C17 8.45 17.45 8 18 8Z',
+  settings: 'M19.14 12.94C19.18 12.64 19.2 12.33 19.2 12C19.2 11.68 19.18 11.36 19.13 11.06L21.16 9.48C21.34 9.34 21.39 9.07 21.28 8.87L19.36 5.55C19.24 5.33 18.99 5.26 18.77 5.33L16.38 6.29C15.88 5.91 15.35 5.59 14.76 5.35L14.4 2.81C14.36 2.57 14.16 2.4 13.92 2.4H10.08C9.84 2.4 9.65 2.57 9.61 2.81L9.25 5.35C8.66 5.59 8.12 5.92 7.63 6.29L5.24 5.33C5.02 5.25 4.77 5.33 4.65 5.55L2.74 8.87C2.62 9.08 2.66 9.34 2.86 9.48L4.89 11.06C4.84 11.36 4.8 11.69 4.8 12C4.8 12.31 4.82 12.64 4.87 12.94L2.84 14.52C2.66 14.66 2.61 14.93 2.72 15.13L4.64 18.45C4.76 18.67 5.01 18.74 5.23 18.67L7.62 17.71C8.12 18.09 8.65 18.41 9.24 18.65L9.6 21.19C9.65 21.43 9.84 21.6 10.08 21.6H13.92C14.16 21.6 14.36 21.43 14.39 21.19L14.75 18.65C15.34 18.41 15.88 18.09 16.37 17.71L18.76 18.67C18.98 18.75 19.23 18.67 19.35 18.45L21.27 15.13C21.39 14.91 21.34 14.66 21.15 14.52L19.14 12.94ZM12 15.6C10.02 15.6 8.4 13.98 8.4 12C8.4 10.02 10.02 8.4 12 8.4C13.98 8.4 15.6 10.02 15.6 12C15.6 13.98 13.98 15.6 12 15.6Z',
+  back: 'M16.6668 9.16665H6.52516L11.1793 4.51248L10.0002 3.33331L3.3335 9.99998L10.0002 16.6666L11.1793 15.4875L6.52516 10.8333H16.6668V9.16665Z',
 }
 
 const attributeNames = {
@@ -63,9 +67,10 @@ function SiteIcon({ name, className = '', ...props }) {
   }
 
   const chevron = name?.startsWith('chevron')
+  const filled = ['wallet', 'settings', 'back', 'vault'].includes(name)
   return (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-      <path d={fallbackPaths[name] || fallbackPaths.bets} fill="none" stroke="currentColor" strokeWidth={chevron ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round" />
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox={name === 'back' ? '0 0 20 20' : '0 0 24 24'} fill="none" aria-hidden="true" {...props}>
+      <path d={fallbackPaths[name] || fallbackPaths.bets} fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth={chevron ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

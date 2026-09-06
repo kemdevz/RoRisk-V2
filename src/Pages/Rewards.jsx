@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import SiteIcon from '../components/Icons'
+import { notify } from '../lib/Notifications'
 
 const pageScope = { 'data-v-34ad1ed0': '' }
 const heroScope = { 'data-v-3323c608': '' }
@@ -38,6 +39,10 @@ const dailyCases = [
 
 function RewardsHero({ onSignIn }) {
   const [affiliateCode, setAffiliateCode] = useState('')
+  const claimCode = () => {
+    if (!affiliateCode.trim()) return notify({ type: 'error', message: 'Your entered referral code is invalid.' })
+    onSignIn()
+  }
 
   return (
     <div className="rewards-hero" {...heroScope}>
@@ -70,7 +75,7 @@ function RewardsHero({ onSignIn }) {
               <div className="rewards-hero-input-bar" {...heroScope}>
                 <input className="rewards-hero-input" type="text" placeholder="Enter referral code" value={affiliateCode} onChange={(event) => setAffiliateCode(event.target.value)} autoComplete="off" {...heroScope} />
                 <div className="rewards-hero-input-right" {...heroScope}>
-                  <button className="rewards-hero-claim-btn" type="button" onClick={onSignIn} {...heroScope}>Claim Code</button>
+                  <button className="rewards-hero-claim-btn" type="button" onClick={claimCode} {...heroScope}>Claim Code</button>
                 </div>
               </div>
               <p className="rewards-hero-hint" {...heroScope}>Don’t have a code? Enter code <button className="rewards-hero-hint-code" type="button" onClick={() => setAffiliateCode('RISK')} {...heroScope}>&quot;RISK&quot;</button></p>
@@ -91,7 +96,7 @@ function RewardsHero({ onSignIn }) {
   )
 }
 
-function RewardsRakeback({ onSignIn }) {
+function RewardsRakeback({ onProtectedAction }) {
   return (
     <div className="rewards-rakeback" {...rakebackScope}>
       {rakebackItems.map((item) => (
@@ -101,14 +106,14 @@ function RewardsRakeback({ onSignIn }) {
           <div className={`rewards-rakeback-content-available ${item.type}`} {...rakebackScope}>
             Available: <img src="/Rewards/coin.12f4bce8.svg" alt="currency" {...rakebackScope} /> <span {...rakebackScope}>0</span>
           </div>
-          <button className={`rewards-rakeback-content-button ${item.type}`} type="button" disabled={!item.enabled} onClick={item.enabled ? onSignIn : undefined} {...rakebackScope}>Claim Now</button>
+          <button className={`rewards-rakeback-content-button ${item.type}`} type="button" disabled={!item.enabled} onClick={item.enabled ? onProtectedAction : undefined} {...rakebackScope}>Claim Now</button>
         </div>
       ))}
     </div>
   )
 }
 
-function RewardsDailyCases({ onSignIn }) {
+function RewardsDailyCases() {
   return (
     <div className="rewards-daily-cases" {...dailyScope}>
       <div className="daily-cases-heading" {...dailyScope}>
@@ -117,7 +122,7 @@ function RewardsDailyCases({ onSignIn }) {
       </div>
       <div className="daily-cases-grid" {...dailyScope}>
         {dailyCases.map(([level, theme, image]) => (
-          <div className={`daily-case-card daily-case-card--${theme} daily-case-card--locked`} key={level} role="button" tabIndex="-1" onClick={onSignIn} {...dailyScope}>
+          <div className={`daily-case-card daily-case-card--${theme} daily-case-card--locked`} key={level} {...dailyScope}>
             <div className="daily-case-image-wrap" {...dailyScope}><img src={`/Rewards/${image}`} alt={`Level ${level} case`} {...dailyScope} /></div>
             <div className="daily-case-level" {...dailyScope}>Level {level}</div>
             <div className="daily-case-action daily-case-action--locked" {...dailyScope}>
@@ -134,6 +139,7 @@ function Rewards({ onSignIn }) {
   useEffect(() => {
     document.title = 'Rewards - RoRisk.com'
   }, [])
+  const protectedAction = () => notify({ type: 'error', message: 'Please sign in to perform this action.' })
 
   return (
     <div className="rewards" {...pageScope}>
@@ -150,14 +156,14 @@ function Rewards({ onSignIn }) {
             <img src="/Rewards/discord-vector.71cac381.png" alt="Discord Icon" {...discordScope} />
             <div className="rewards-discord-header" {...discordScope}><span {...discordScope}>Discord Rewards</span><span className="rewards-discord-description" {...discordScope}>Join our Discord server to get the latest news and updates!</span></div>
           </div>
-          <div className="rewards-faucet" onClick={onSignIn} role="button" tabIndex="0" {...faucetScope}>
+          <div className="rewards-faucet" onClick={protectedAction} role="button" tabIndex="0" {...faucetScope}>
             <div className="rewards-faucet-sparks-overlay" {...faucetScope} />
             <img src="/Rewards/faucet-vector.5c444398.png" alt="Faucet Icon" {...faucetScope} />
             <div className="rewards-faucet-header" {...faucetScope}><span {...faucetScope}>Free Faucet</span><span className="rewards-faucet-description" {...faucetScope}>Are you a high level? Claim free coins every hour!</span></div>
           </div>
         </div>
-        <RewardsRakeback onSignIn={onSignIn} />
-        <RewardsDailyCases onSignIn={onSignIn} />
+        <RewardsRakeback onProtectedAction={protectedAction} />
+        <RewardsDailyCases />
       </div>
     </div>
   )

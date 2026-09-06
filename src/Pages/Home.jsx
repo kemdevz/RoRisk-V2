@@ -57,6 +57,14 @@ const methods = [
   ['limiteds', '/Methods/valk.3e69ac3a.png'],
 ]
 
+function levelTheme(level) {
+  if (level >= 100) return 'red'
+  if (level >= 75) return 'orange'
+  if (level >= 50) return 'purple'
+  if (level >= 25) return 'green'
+  return 'blue'
+}
+
 function HomeBanner() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState(null)
@@ -220,7 +228,15 @@ function HomeBanner() {
   )
 }
 
-function HomeWelcome({ onRewards }) {
+function HomeWelcome({ user, onRewards }) {
+  const username = user?.username || 'Guest'
+  const avatar = user?.avatar_headshot || user?.avatar || '/default-avatar.png'
+  const xp = Number(user?.xp)
+  const storedLevel = Math.min(100, Math.max(0, Number(user?.level) || 0))
+  const level = Number.isFinite(xp) && xp > 0 ? Math.min(100, Math.floor(Math.cbrt(xp / 1000 / 50))) : storedLevel
+  const levelStart = 1000 * (level ** 3) * 50
+  const levelEnd = 1000 * ((level + 1) ** 3) * 50
+  const levelProgress = level >= 100 ? 100 : Number.isFinite(xp) && xp > 0 ? Math.min(100, Math.max(0, ((xp - levelStart) / (levelEnd - levelStart)) * 100)) : 0
   return (
     <div className="home-welcome" data-v-21735a18="" data-v-30c4bf74="">
       <div className="welcome-panel" data-v-21735a18="">
@@ -228,21 +244,21 @@ function HomeWelcome({ onRewards }) {
           <div className="welcome-top" data-v-21735a18="">
             <div className="welcome-avatar" data-v-21735a18="">
               <div className="welcome-avatar-inner" data-v-21735a18="">
-                <div className="avatar-image user-avatar" data-v-6adb23f8="" data-v-21735a18=""><img src="/default-avatar.png" alt="avatar" data-v-6adb23f8="" /></div>
+                <div className="avatar-image user-avatar" data-v-6adb23f8="" data-v-21735a18=""><img src={avatar} alt="avatar" data-v-6adb23f8="" /></div>
               </div>
             </div>
             <div className="welcome-heading" data-v-21735a18="">
               <div className="welcome-label" data-v-21735a18="">Welcome Back</div>
-              <div className="welcome-username" data-v-21735a18="">Guest</div>
+              <div className="welcome-username" data-v-21735a18="">{username}</div>
             </div>
           </div>
           <div className="level-progress-section" data-v-21735a18="">
-            <div className="box-level level-blue" data-v-ff759fba="" data-v-21735a18=""><div className="level-inner" data-v-ff759fba="">0</div></div>
+            <div className={`box-level level-${levelTheme(level)}`} data-v-ff759fba="" data-v-21735a18=""><div className="level-inner" data-v-ff759fba="">{level}</div></div>
             <div className="progress-container" data-v-21735a18="">
-              <div className="progress-arrow" style={{ left: '0%' }} data-v-21735a18=""><SiteIcon name="chevron-down" data-v-21735a18="" /></div>
-              <div className="progress-bar" data-v-21735a18=""><div className="progress-fill" style={{ width: '0%' }} data-v-21735a18="" /></div>
+              <div className="progress-arrow" style={{ left: `${levelProgress}%` }} data-v-21735a18=""><SiteIcon name="chevron-down" data-v-21735a18="" /></div>
+              <div className="progress-bar" data-v-21735a18=""><div className="progress-fill" style={{ width: `${levelProgress}%` }} data-v-21735a18="" /></div>
             </div>
-            <div className="box-level level-blue" data-v-ff759fba="" data-v-21735a18=""><div className="level-inner" data-v-ff759fba="">1</div></div>
+            <div className={`box-level level-${levelTheme(Math.min(100, level + 1))}`} data-v-ff759fba="" data-v-21735a18=""><div className="level-inner" data-v-ff759fba="">{Math.min(100, level + 1)}</div></div>
           </div>
           <button className="rewards-btn" type="button" onClick={onRewards} data-v-21735a18="">View Daily Rewards</button>
         </div>
@@ -604,7 +620,7 @@ function Bets() {
   )
 }
 
-function Home() {
+function Home({ user }) {
   const openRewards = () => {
     window.history.pushState({}, '', '/rewards')
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -616,7 +632,7 @@ function Home() {
 
   return (
     <div className="home" data-v-30c4bf74="">
-      <div className="home-top" data-v-30c4bf74=""><HomeWelcome onRewards={openRewards} /><HomeBanner /></div>
+      <div className="home-top" data-v-30c4bf74=""><HomeWelcome user={user} onRewards={openRewards} /><HomeBanner /></div>
       <HomeGames />
       <HomeInfoBanner />
       <HomeMethods />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
-const scope = { 'data-v-119d36d9': '' }
+const scope = { 'data-v-7b35cc7e': '' }
 
 function ModalAnimation({ children, onClose, label, closeRequest = false }) {
   const [phase, setPhase] = useState('enter')
@@ -40,7 +41,7 @@ function ModalAnimation({ children, onClose, label, closeRequest = false }) {
   const overlayClass = `modals-overlay fade-${phase === 'leave' ? 'leave' : 'enter'}-active${phase === 'enter' ? ' fade-enter' : ''}${phase === 'leave' ? ' fade-leave-to' : ''}`
   const holderClass = `modals-holder slide-fade-${phase === 'leave' ? 'leave' : 'enter'}-active${phase === 'enter' ? ' slide-fade-enter' : ''}${phase === 'leave' ? ' slide-fade-leave-to' : ''}`
 
-  return (
+  return createPortal(
     <div className="modals" {...scope}>
       <div className={overlayClass} {...scope} />
       <div className={holderClass} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }} {...scope}>
@@ -60,7 +61,8 @@ function ModalAnimation({ children, onClose, label, closeRequest = false }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

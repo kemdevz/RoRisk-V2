@@ -5,8 +5,21 @@ import Header from './components/Header'
 import LoadingScreen from './components/LoadingScreen'
 import Sidebar from './components/Sidebar'
 import SigninModal from './components/SigninModal'
+import Notifications from './components/Notifications'
 import Home from './Pages/Home'
 import Rewards from './Pages/Rewards'
+import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
+import { notify } from './lib/Notifications'
+
+function readStoredUser() {
+  try {
+    const stored = window.localStorage.getItem('rorisk_user')
+    return stored ? JSON.parse(stored) : null
+  } catch {
+    window.localStorage.removeItem('rorisk_user')
+    return null
+  }
+}
 
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname)
@@ -15,9 +28,58 @@ function App() {
   const [routePhase, setRoutePhase] = useState('idle')
   const [isChatOpen, setIsChatOpen] = useState(() => window.innerWidth > 1800)
   const [authModal, setAuthModal] = useState(null)
+  const [user, setUser] = useState(readStoredUser)
   const [loaderPhase, setLoaderPhase] = useState('visible')
   const [pagePhase, setPagePhase] = useState('idle')
   const handleChatToggle = useCallback((open) => setIsChatOpen(open), [])
+
+  useEffect(() => listenForPasswordRecovery(() => setAuthModal('recovery')), [])
+
+  useEffect(() => {
+    const updateUser = (event) => {
+      const profile = event.detail?.user
+      if (!profile) return
+      setUser((current) => {
+        if (!current || (current.uuid || current.id) !== (profile.uuid || profile.id)) return current
+        const next = { ...current, ...profile }
+        window.localStorage.setItem('rorisk_user', JSON.stringify(next))
+        return next
+      })
+    }
+    window.addEventListener('rorisk:user-update', updateUser)
+    return () => window.removeEventListener('rorisk:user-update', updateUser)
+  }, [])
+
+  useEffect(() => {
+    if (loaderPhase !== 'done') return
+    const isGoogleCallback = new URLSearchParams(window.location.search).has('code')
+    syncGoogleProfile().then((user) => {
+      if (user) {
+        window.localStorage.setItem('rorisk_user', JSON.stringify(user))
+        setUser(user)
+        if (isGoogleCallback) notify({ type: 'success', message: 'Signed in with Google successfully.' })
+      }
+    }).catch((error) => {
+      if (isGoogleCallback) notify({ type: 'error', message: error.message || 'Google sign in failed. Please try again.' })
+    })
+  }, [loaderPhase])
+
+  const handleAuthenticated = useCallback((authenticatedUser) => {
+    if (!authenticatedUser) return
+    window.localStorage.setItem('rorisk_user', JSON.stringify(authenticatedUser))
+    setUser(authenticatedUser)
+    setAuthModal(null)
+  }, [])
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await signOut()
+    } finally {
+      window.localStorage.removeItem('rorisk_user')
+      setUser(null)
+      notify({ type: 'success', message: 'Signed out successfully.' })
+    }
+  }, [])
 
   useEffect(() => {
     const updatePathname = () => setPathname(window.location.pathname)
@@ -122,23 +184,24 @@ function App() {
 
   return (
     <div className={`app${pagePhase !== 'idle' ? ' fade-enter-active' : ''}${pagePhase === 'enter' ? ' fade-enter-from' : ''}`}>
-      <Header pathname={pathname} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} />
+      <Header pathname={pathname} user={user} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} onSignOut={handleSignOut} />
       <div className="app-body">
-        <Sidebar pathname={pathname} />
+        <Sidebar pathname={pathname} user={user} />
         <main
           className={`background${isChatOpen ? ' chat-open' : ''}`}
           style={{ backgroundImage: pathname === '/rewards' ? "url('/img/rewards.82057e5f.png')" : "url('/img/main.c55d6769.png')" }}
         >
           <div className="content-wrapper">
             <div className={routeClass}>
-              <Page onSignIn={() => setAuthModal('login')} />
+              <Page user={user} onSignIn={() => setAuthModal('login')} />
             </div>
           </div>
           <Footer />
         </main>
       </div>
-      <Chat onToggle={handleChatToggle} />
-      {authModal && <SigninModal initialTab={authModal} onClose={() => setAuthModal(null)} />}
+      <Chat user={user} onToggle={handleChatToggle} />
+      {authModal && <SigninModal initialTab={authModal} onClose={() => setAuthModal(null)} onAuthenticated={handleAuthenticated} />}
+      <Notifications />
     </div>
   )
 }

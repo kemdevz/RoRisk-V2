@@ -1,3 +1,5 @@
+import { copyText, notify } from '../lib/Notifications'
+
 const footerGroups = [
   {
     title: 'Games',
@@ -62,9 +64,10 @@ function ContactIcon() {
 function Footer() {
   const copyEmail = async () => {
     try {
-      await navigator.clipboard.writeText('support@rorisk.com')
+      await copyText('support@rorisk.com')
+      notify({ type: 'success', message: 'Email copied to clipboard.' })
     } catch {
-      // The production control remains usable even when clipboard permission is denied.
+      notify({ type: 'error', message: 'Failed to copy email.' })
     }
   }
 

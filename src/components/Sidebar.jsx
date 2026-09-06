@@ -1,5 +1,56 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import SiteIcon from './Icons'
+
+const userCardScope = { 'data-v-eb7454a8': '' }
+
+function userLevelData(user) {
+  const xp = Number(user?.xp)
+  if (Number.isFinite(xp) && xp > 0) {
+    const level = Math.min(100, Math.floor(Math.cbrt(xp / 1000 / 50)))
+    if (level >= 100) return { level, progress: 100 }
+    const start = 1000 * (level ** 3) * 50
+    const end = 1000 * ((level + 1) ** 3) * 50
+    return { level, progress: Math.min(100, Math.max(0, ((xp - start) / (end - start)) * 100)) }
+  }
+  return { level: Math.min(100, Math.max(0, Number(user?.level) || 0)), progress: 0 }
+}
+
+function SidebarUserCard({ user }) {
+  const [claimMenuOpen, setClaimMenuOpen] = useState(false)
+  const userCardRef = useRef(null)
+  const { level, progress } = userLevelData(user)
+
+  useEffect(() => {
+    const close = (event) => {
+      if (!userCardRef.current?.contains(event.target)) setClaimMenuOpen(false)
+    }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [])
+
+  const goToRewards = () => {
+    setClaimMenuOpen(false)
+    if (window.location.pathname === '/rewards') return
+    window.history.pushState({}, '', '/rewards')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
+  return (
+    <section ref={userCardRef} className="sidebar-user-card" {...userCardScope}>
+      <div className="sidebar-user-name" {...userCardScope}>{user?.username || ''}</div>
+      <div className="sidebar-user-xp" title={`Level ${level}`} {...userCardScope}><div className="sidebar-user-xp-fill" style={{ width: `${progress}%` }} {...userCardScope} /></div>
+      <div className="sidebar-user-actions" {...userCardScope}>
+        <div className={`sidebar-claim${claimMenuOpen ? ' sidebar-claim-open' : ''}`} {...userCardScope}>
+          <button className={`sidebar-user-btn sidebar-user-btn-claim${claimMenuOpen ? ' sidebar-user-btn-active' : ''}`} type="button" aria-expanded={claimMenuOpen} onClick={() => setClaimMenuOpen((value) => !value)} {...userCardScope}>
+            <span {...userCardScope}>CLAIM</span><SiteIcon name="chevron-down" className={`sidebar-claim-caret${claimMenuOpen ? ' sidebar-claim-caret-open' : ''}`} {...userCardScope} />
+          </button>
+          {claimMenuOpen && <div className="sidebar-claim-menu" {...userCardScope}><div className="sidebar-claim-empty" {...userCardScope}>No daily cases available</div></div>}
+        </div>
+        <button className="sidebar-user-btn sidebar-user-btn-rewards" type="button" onClick={goToRewards} {...userCardScope}>REWARDS</button>
+      </div>
+    </section>
+  )
+}
 
 const games = [
   ['battles', 'Battles', '/battles'],
@@ -19,6 +70,12 @@ const more = [
   ['market', 'Market', '/market'],
   ['affiliates', 'Affiliates', '/affiliates'],
   ['support', 'Support', '#support'],
+]
+
+const profile = [
+  ['wallet', 'Wallet', '/wallet'],
+  ['vault', 'Vault', '/vault'],
+  ['settings', 'Settings', '/settings'],
 ]
 
 function SidebarSection({ title, items, showLabels, pathname }) {
@@ -51,7 +108,7 @@ function SidebarSection({ title, items, showLabels, pathname }) {
   )
 }
 
-function Sidebar({ pathname }) {
+function Sidebar({ pathname, user }) {
   const [width, setWidth] = useState(window.innerWidth)
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1200)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1200)
@@ -75,6 +132,7 @@ function Sidebar({ pathname }) {
     <aside id="sidebar" className={`${desktopIconRail ? 'sidebar-collapsed ' : ''}${sidebarOpen ? 'sidebar-open' : ''}`.trim()} data-v-4fc2a52c="">
       <button className="sidebar-toggle" aria-label={desktop ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : (sidebarOpen ? 'Close menu' : 'Open menu')} onClick={toggleSidebar} data-v-4fc2a52c=""><span data-v-4fc2a52c="" /><span data-v-4fc2a52c="" /><span data-v-4fc2a52c="" /></button>
       <div className="sidebar-inner-content" data-v-4fc2a52c="">
+        {user && showLabels && <SidebarUserCard user={user} />}
         <SidebarSection title="Games" items={games} showLabels={showLabels} pathname={pathname} />
         {showLabels && (
           <a className="sidebar-race-banner" href="/race" data-v-9e395626="">
@@ -85,6 +143,7 @@ function Sidebar({ pathname }) {
             </div>
           </a>
         )}
+        {user && <SidebarSection title="Profile" items={profile} showLabels={showLabels} pathname={pathname} />}
         <SidebarSection title="More" items={more} showLabels={showLabels} pathname={pathname} />
       </div>
     </aside>

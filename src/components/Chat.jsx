@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SiteIcon from './Icons'
+import ModalAnimation from './ModalAnimation'
+import { notify } from '../lib/Notifications'
 
 const scope = { 'data-v-7b767a0f': '' }
 const rainPoolScope = { 'data-v-dea29896': '' }
 const rainJoinScope = { 'data-v-248d2d1d': '' }
-const messageScope = { 'data-v-e131f922': '' }
+const messageScope = { 'data-v-668aced3': '' }
+const systemMessageScope = { 'data-v-42a467e8': '' }
 const languages = [
   { code: 'en', label: 'English', flag: '/Chat/en.2814d5d0.svg' },
   { code: 'tr', label: 'Turkish', flag: '/Chat/tr.adedd58e.svg' },
@@ -82,7 +85,7 @@ function TimerIcon({ join = false }) {
 }
 
 function LiveIcon() {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none" {...rainPoolScope}><rect width="14" height="14" rx="7" fill="#8AFF8A" fillOpacity="0.2" /><circle cx="7" cy="7" r="4" fill="#8AFF8A" /></svg>
+  return <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none" {...rainPoolScope}><rect width="14" height="14" rx="7" fill="#8AFF8A" fillOpacity="0.2" /><g filter="url(#rain-live-inner-shadow)"><path d="M7 11C9.20914 11 11 9.20914 11 7C11 4.79086 9.20914 3 7 3C4.79086 3 3 4.79086 3 7C3 9.20914 4.79086 11 7 11Z" fill="#8AFF8A" /></g><defs><filter id="rain-live-inner-shadow" x="3" y="3" width="8" height="8" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB"><feFlood floodOpacity="0" result="BackgroundImageFix" /><feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset /><feGaussianBlur stdDeviation="2" /><feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" /><feColorMatrix type="matrix" values="0 0 0 0 0.984314 0 0 0 0 0.631373 0 0 0 0 0.0980392 0 0 0 0.2 0" /><feBlend mode="normal" in2="shape" result="effect1_innerShadow_800_2" /></filter></defs></svg>
 }
 
 function PeopleIcon() {
@@ -92,12 +95,45 @@ function PeopleIcon() {
 const formatTimer = (seconds) => `${String(Math.floor(Math.max(0, seconds) / 60)).padStart(2, '0')}:${String(Math.max(0, seconds) % 60).padStart(2, '0')}`
 
 function RainPool({ amount, timer, onTip }) {
+  const [displayAmount, setDisplayAmount] = useState(amount)
+  const previousAmountRef = useRef(amount)
+  useEffect(() => {
+    const from = previousAmountRef.current
+    previousAmountRef.current = amount
+    if (from === amount) return undefined
+    const startedAt = performance.now()
+    let frame
+    const animate = (now) => {
+      const progress = Math.min((now - startedAt) / 1000, 1)
+      const eased = 1 - Math.pow(1 - progress, 5)
+      setDisplayAmount(Math.floor(from + (amount - from) * eased))
+      if (progress < 1) frame = requestAnimationFrame(animate)
+    }
+    frame = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame)
+  }, [amount])
   const [minutes, seconds] = formatTimer(timer).split(':')
-  return <div className="rain-container" {...rainPoolScope} {...scope}><div className="rain-tip-dropdown" {...rainPoolScope}><button className="button-toggle" type="button" onClick={onTip} {...rainPoolScope}><div className="rain-info" {...rainPoolScope}><div className="live-rain" {...rainPoolScope}><LiveIcon /> Rain Pool</div><div className="timer" {...rainPoolScope}><TimerIcon /><div className="timer-text" {...rainPoolScope}><div className="number-box" {...rainPoolScope}><div className="flip-number" key={minutes} {...rainPoolScope}>{minutes}</div></div> : <div className="number-box" {...rainPoolScope}><div className="flip-number" key={seconds} {...rainPoolScope}>{seconds}</div></div></div></div></div><div className="big-box" {...rainPoolScope}><div className="rain-amount" {...rainPoolScope}><img src="/coin.svg" alt="icon" {...rainPoolScope} /><span {...rainPoolScope}>{amount.toLocaleString()}</span></div><span className="tip-btn" aria-hidden="true" {...rainPoolScope}><svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" fill="none" {...rainPoolScope}><path d="M23 14.4286H14.4286V23H11.5714V14.4286H3V11.5714H11.5714V3H14.4286V11.5714H23V14.4286Z" fill="currentColor" /></svg></span></div><div className="rain-tip-background" {...rainPoolScope}><img src="/Chat/rain.f9c11ead.png" alt="rain tip background" {...rainPoolScope} /></div></button></div></div>
+  return <div className="rain-container" {...rainPoolScope} {...scope}><div className="rain-tip-dropdown" {...rainPoolScope}><button className="button-toggle" type="button" onClick={onTip} {...rainPoolScope}><div className="rain-info" {...rainPoolScope}><div className="live-rain" {...rainPoolScope}><LiveIcon /> Rain Pool</div><div className="timer" {...rainPoolScope}><TimerIcon /><div className="timer-text" {...rainPoolScope}><div className="number-box" {...rainPoolScope}><div className="flip-number" key={minutes} {...rainPoolScope}>{minutes}</div></div> : <div className="number-box" {...rainPoolScope}><div className="flip-number" key={seconds} {...rainPoolScope}>{seconds}</div></div></div></div></div><div className="big-box" {...rainPoolScope}><div className="rain-amount" {...rainPoolScope}><img src="/coin.svg" alt="icon" {...rainPoolScope} /><span {...rainPoolScope}>{displayAmount.toLocaleString()}</span></div><span className="tip-btn" aria-hidden="true" {...rainPoolScope}><svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" fill="none" {...rainPoolScope}><path d="M23 14.4286H14.4286V23H11.5714V14.4286H3V11.5714H11.5714V3H14.4286V11.5714H23V14.4286Z" fill="currentColor" /></svg></span></div><div className="rain-tip-background" {...rainPoolScope}><img src="/Chat/rain.f9c11ead.png" alt="rain tip background" {...rainPoolScope} /></div></button></div></div>
 }
 
-function RainJoin({ amount, timer, joined, onJoin }) {
-  return <div className="rain-join" {...rainJoinScope} {...scope}><div className="rain-info" {...rainJoinScope}><div className="rain-info-container" {...rainJoinScope}><div className="rain-info-title-container" {...rainJoinScope}><div className="rain-amount" {...rainJoinScope}><img src="/coin.svg" alt="icon" {...rainJoinScope} /><span className="animated-number" {...rainJoinScope}>{amount.toLocaleString()}</span></div><div className="rain-info-title" {...rainJoinScope}><span {...rainJoinScope}>It's raining now!</span></div></div><div className="rain-timer" {...rainJoinScope}><TimerIcon join /><span {...rainJoinScope}>{formatTimer(timer)}</span></div></div><div className="rain-buttons" {...rainJoinScope}><button className="join-btn" type="button" disabled={joined} onClick={onJoin} {...rainJoinScope}><span {...rainJoinScope}>{joined ? 'Already Joined' : 'Join Rain'} <span className="rain-players" {...rainJoinScope}><PeopleIcon /><span {...rainJoinScope}>{joined ? 1 : 0}</span></span></span></button></div></div></div>
+function RainJoin({ amount, timer, joined, participantsCount, onJoin }) {
+  const [displayAmount, setDisplayAmount] = useState(amount)
+  const previousAmountRef = useRef(amount)
+  useEffect(() => {
+    const from = previousAmountRef.current
+    previousAmountRef.current = amount
+    if (from === amount) return undefined
+    const startedAt = performance.now()
+    let frame
+    const animate = (now) => {
+      const progress = Math.min((now - startedAt) / 1000, 1)
+      setDisplayAmount(Math.floor(from + (amount - from) * progress))
+      if (progress < 1) frame = requestAnimationFrame(animate)
+    }
+    frame = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame)
+  }, [amount])
+  return <div className="rain-join" {...rainJoinScope} {...scope}><div className="rain-info" {...rainJoinScope}><div className="rain-info-container" {...rainJoinScope}><div className="rain-info-title-container" {...rainJoinScope}><div className="rain-amount" {...rainJoinScope}><img src="/coin.svg" alt="icon" {...rainJoinScope} /><span className="animated-number" {...rainJoinScope}>{displayAmount.toLocaleString()}</span></div><div className="rain-info-title" {...rainJoinScope}><span {...rainJoinScope}>It's raining now!</span></div></div><div className="rain-timer" {...rainJoinScope}><TimerIcon join /><span {...rainJoinScope}>{formatTimer(timer)}</span></div></div><div className="rain-buttons" {...rainJoinScope}><button className="join-btn" type="button" disabled={joined} onClick={onJoin} {...rainJoinScope}><span {...rainJoinScope}>{joined ? 'Already Joined' : 'Join Rain'} <span className="rain-players" {...rainJoinScope}><PeopleIcon /><span {...rainJoinScope}>{participantsCount}</span></span></span></button></div></div></div>
 }
 
 function MessageContent({ text, emojis }) {
@@ -105,8 +141,39 @@ function MessageContent({ text, emojis }) {
   return text.split(/:([a-z0-9][a-z0-9_-]*):/gi).map((part, index) => emojiMap.has(part.toLowerCase()) ? <img className="chat-emoji" src={emojiMap.get(part.toLowerCase())} alt={`:${part}:`} title={`:${part}:`} key={`${part}-${index}`} {...messageScope} /> : <span key={`${part}-${index}`} {...messageScope}>{part}</span>)
 }
 
+function levelTheme(level) {
+  if (level >= 100) return 'red'
+  if (level >= 75) return 'orange'
+  if (level >= 50) return 'purple'
+  if (level >= 25) return 'green'
+  return 'blue'
+}
+
+function ChatRankBadge({ rank }) {
+  if (!['admin', 'mod', 'partner'].includes(rank)) return null
+  const hash = rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'
+  return <div className={`box-rank rank-${rank} rank-box`} data-v-fc8af502="" {...messageScope}><div className="rank-inner" data-v-fc8af502=""><img src={`/${rank}.${hash}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
+}
+
 function ChatMessage({ message, emojis }) {
-  return <div className="chat-message-element" {...messageScope} {...scope}><div className="element-message" {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src="/default-avatar.png" alt={message.username} data-v-6adb23f8="" /></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{message.username}</span></div><div className="element-text" {...messageScope}><MessageContent text={message.text} emojis={emojis} /></div></div></button></div></div></div></div>
+  let systemContent = null
+  if (message.type === 'rainCompleted') {
+    const count = Number(message.claimedCount) || 0
+    const grammar = count === 1 ? 'person has' : 'people have'
+    const amount = Math.abs(Number(message.rain?.amount) || 0).toLocaleString()
+    systemContent = <><span className="highlighted-count">{count}</span> {grammar} claimed the rain payout of <span className="coin-amount">{amount}</span> Coins!</>
+  } else if (message.type === 'rainTip') {
+    const username = message.transaction?.user?.username || 'Someone'
+    const amount = Math.abs(Number(message.transaction?.amount) || 0).toLocaleString()
+    systemContent = <><span className="highlighted-username">{username}</span> has tipped <span className="coin-amount">{amount}</span> Coins to the rain!</>
+  }
+  if (systemContent) return <div className="chat-message-element element-system" {...messageScope} {...scope}><div className="chat-message-element element-system" {...messageScope} {...systemMessageScope}><div className="element-message" {...systemMessageScope}><div className="message-content" {...systemMessageScope}><div className="user-message-group" {...systemMessageScope}><button className="button-user" type="button" {...systemMessageScope}><div className="system-avatar" {...systemMessageScope}><img src="/Chat/system.c68aca3f.png" alt="System" {...systemMessageScope} /></div><div className="user-username-group" {...systemMessageScope}><div className="user-username-group-inner" {...systemMessageScope}><span className="user-username" {...systemMessageScope}>System Message</span></div><div className="element-text" {...systemMessageScope}>{systemContent}</div></div></button></div></div></div></div></div>
+  const messageUser = message.user || message
+  const level = Math.min(100, Math.max(0, Number(messageUser.level) || 0))
+  const rank = String(messageUser.rank || 'user').toLowerCase()
+  const avatar = messageUser.avatar_headshot || messageUser.avatar || '/default-avatar.png'
+  const username = messageUser.username || ''
+  return <div className="chat-message-element" {...messageScope} {...scope}><div className={`element-message${rank !== 'user' ? ` ${rank}-message` : ''}`} {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src={avatar} alt={username} data-v-6adb23f8="" /></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{username}</span>{rank === 'user' ? <div className={`box-level level-${levelTheme(level)} level-box`} data-v-ff759fba="" {...messageScope}><div className="level-inner" data-v-ff759fba="">{level}</div></div> : <ChatRankBadge rank={rank} />}</div><div className="element-text" {...messageScope}><MessageContent text={message.text} emojis={emojis} /></div></div></button></div></div></div></div>
 }
 
 /*
@@ -122,16 +189,30 @@ function ChatModal({ type, onClose, onStartRain }) {
 }
 
 */
-function Chat({ onToggle }) {
+function RainTipModal({ balance, onSubmit }) {
+  const [amount, setAmount] = useState('100')
+  const numericAmount = Math.floor(Number(amount.replaceAll(',', '')) || 0)
+  const maximum = Math.min(500000, Math.max(0, Math.floor(Number(balance) || 0)))
+  const valid = numericAmount >= 100 && numericAmount <= 500000 && numericAmount <= maximum
+  const formatAmount = (value) => Math.max(100, Math.min(500000, Math.floor(value || 100))).toLocaleString()
+
+  return <div className="modal-tip-rain" data-v-0d50ed68=""><div className="live-rain" data-v-0d50ed68="">Tip Rain</div><div className="tip-info" data-v-0d50ed68=""><div className="tip-amount-section" data-v-0d50ed68=""><div className="tip-title" data-v-0d50ed68="">Tip Amount</div><div className="tip-input" data-v-0d50ed68=""><img className="tip-icon" src="/coin.svg" alt="icon" data-v-0d50ed68="" /><input className="tip-amount-display" type="text" inputMode="numeric" value={amount} onFocus={() => setAmount((value) => value.replaceAll(',', ''))} onBlur={() => setAmount(formatAmount(numericAmount))} onChange={(event) => setAmount(event.target.value.replace(/[^\d]/g, ''))} placeholder="0" data-v-0d50ed68="" /><div className="tip-actions-buttons" data-v-0d50ed68=""><button type="button" onClick={() => setAmount(formatAmount(numericAmount / 2))} data-v-0d50ed68="">1/2</button><button type="button" onClick={() => setAmount(formatAmount(numericAmount * 2))} data-v-0d50ed68="">2x</button><button type="button" onClick={() => setAmount(formatAmount(maximum))} data-v-0d50ed68="">Max</button></div></div></div><div className="tip-actions" data-v-0d50ed68=""><button className="button-tip" type="button" disabled={!valid} onClick={() => onSubmit(numericAmount)} data-v-0d50ed68=""><div className="button-inner" data-v-0d50ed68=""><div className="inner-content" data-v-0d50ed68="">Send Tip</div></div></button></div></div></div>
+}
+
+function Chat({ onToggle, user }) {
+  const authenticatedUserId = user?.uuid || user?.id || null
   const [isChatOpen, setIsChatOpen] = useState(() => window.innerWidth > 1800)
-  const [language, setLanguage] = useState(languages[0])
+  const [language, setLanguage] = useState(() => languages.find((item) => item.code === window.localStorage.getItem('chatRoom')) || languages[0])
   const { close: closeLanguagePopup, isExpanded: isLanguageExpanded, isRendered: isLanguageRendered, menuClass: languageMenuClass, toggle: toggleLanguagePopup } = usePopupTransition()
   const { close: closeEmojiPopup, isExpanded: isEmojiExpanded, isRendered: isEmojiRendered, menuClass: emojiMenuClass, toggle: toggleEmojiPopup } = usePopupTransition()
+  const { close: closeRainJoin, isRendered: isRainJoinRendered, menuClass: rainJoinClass, open: openRainJoin } = usePopupTransition(200)
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState([])
-  const [rainAmount] = useState(0)
-  const [rainTimer, setRainTimer] = useState(0)
-  const [joinedRain, setJoinedRain] = useState(false)
+  const [onlineByRoom, setOnlineByRoom] = useState({ en: 0, tr: 0, es: 0, ru: 0, de: 0 })
+  const [rain, setRain] = useState(null)
+  const [showRainTip, setShowRainTip] = useState(false)
+  const [serverOffset, setServerOffset] = useState(0)
+  const [clock, setClock] = useState(() => Date.now())
   const [chatEmojis, setChatEmojis] = useState([])
   const [emojiButton, setEmojiButton] = useState({ code: 'hahaa', src: '/emojis/1000-hahaa.ab605861.png' })
   const chatRef = useRef(null)
@@ -139,8 +220,80 @@ function Chat({ onToggle }) {
   const emojiRef = useRef(null)
   const inputRef = useRef(null)
   const messagesRef = useRef(null)
+  const socketRef = useRef(null)
+  const languageCodeRef = useRef(language.code)
+  const requireAuth = () => {
+    if (user) return true
+    notify({ type: 'error', message: 'Please sign in to perform this action.' })
+    return false
+  }
 
   useEffect(() => { onToggle?.(isChatOpen) }, [isChatOpen, onToggle])
+  useEffect(() => { languageCodeRef.current = language.code }, [language.code])
+  useEffect(() => {
+    let disposed = false
+    let reconnectTimer = null
+    let reconnectDelay = 750
+    const sessionId = window.sessionStorage.getItem('rorisk_chat_session') || crypto.randomUUID()
+    window.sessionStorage.setItem('rorisk_chat_session', sessionId)
+
+    const connect = () => {
+      if (disposed) return
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/realtime`)
+      socketRef.current = socket
+      socket.addEventListener('open', () => {
+        reconnectDelay = 750
+        socket.send(JSON.stringify({ type: 'hello', room: languageCodeRef.current, sessionId }))
+      })
+      socket.addEventListener('message', (event) => {
+        let payload
+        try { payload = JSON.parse(event.data) } catch { return }
+        if (payload.type === 'presence' && payload.counts) setOnlineByRoom(payload.counts)
+        if (payload.type === 'history' && payload.room === languageCodeRef.current) setMessages(Array.isArray(payload.messages) ? payload.messages : [])
+        if (payload.type === 'message' && payload.message?.room === languageCodeRef.current) setMessages((current) => [...current.filter((item) => item.id !== payload.message.id), payload.message].slice(-50))
+        if (payload.type === 'rain' && payload.rain) {
+          setRain(payload.rain)
+          if (Number.isFinite(payload.serverTime)) setServerOffset(payload.serverTime - Date.now())
+        }
+        if (payload.type === 'rainJoined' && payload.rain) {
+          setRain(payload.rain)
+          notify({ type: 'success', message: "You've successfully joined the rain." })
+        }
+        if (payload.type === 'rainTipped' && payload.rain) {
+          setRain(payload.rain)
+          setShowRainTip(false)
+        }
+        if ((payload.type === 'userUpdate' || payload.type === 'userPublicUpdate') && payload.user) {
+          if (payload.type === 'userUpdate') window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: payload.user } }))
+          setMessages((current) => current.map((message) => {
+            const messageId = message.user?.uuid || message.user?.id
+            const profileId = payload.user.uuid || payload.user.id
+            return messageId === profileId ? { ...message, user: { ...message.user, ...payload.user } } : message
+          }))
+        }
+        if (payload.type === 'error' && payload.message) notify({ type: 'error', message: payload.message })
+      })
+      socket.addEventListener('close', () => {
+        if (disposed) return
+        reconnectTimer = window.setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(10000, reconnectDelay * 1.75)
+      })
+    }
+
+    connect()
+    return () => {
+      disposed = true
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      if (socketRef.current) socketRef.current.close()
+      socketRef.current = null
+    }
+  }, [authenticatedUserId])
+  useEffect(() => {
+    window.localStorage.setItem('chatRoom', language.code)
+    const socket = socketRef.current
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'join', room: language.code }))
+  }, [language.code])
   useEffect(() => {
     let active = true
     fetch('/emojis/emojis.json')
@@ -153,7 +306,10 @@ function Chat({ onToggle }) {
       .catch(() => {})
     return () => { active = false }
   }, [])
-  useEffect(() => { if (rainTimer <= 0) return undefined; const timer = window.setTimeout(() => setRainTimer((value) => Math.max(0, value - 1)), 1000); return () => window.clearTimeout(timer) }, [rainTimer])
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 500)
+    return () => window.clearInterval(timer)
+  }, [])
   useEffect(() => { messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: 'smooth' }) }, [messages])
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -165,13 +321,72 @@ function Chat({ onToggle }) {
     return () => document.removeEventListener('click', handleOutsideClick)
   }, [closeEmojiPopup, closeLanguagePopup, isChatOpen, isEmojiExpanded, isLanguageExpanded])
 
-  const submitMessage = () => { const text = chatMessage.trim(); if (!text) return; setMessages((current) => [...current, { id: crypto.randomUUID(), username: 'Guest', text }]); setChatMessage(''); closeEmojiPopup() }
+  const submitMessage = () => {
+    if (!user) return notify({ type: 'error', message: 'Please sign in to perform this action.' })
+    const text = chatMessage.trim()
+    if (!text) return notify({ type: 'error', message: 'Please enter a message.' })
+    if (text.length < 2) return notify({ type: 'error', message: 'Your message must be at least 2 characters long.' })
+    const containsLink = /https?:\/\/\S+|www\.\S+/i.test(text)
+    const allowedStreamLink = /^(https?:\/\/)?(www\.)?(twitch\.tv|kick\.com)\/\S+$/i.test(text)
+    if (containsLink && !allowedStreamLink) return notify({ type: 'error', message: 'Only Twitch and Kick links are allowed in chat.' })
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) return notify({ type: 'error', message: 'Chat is reconnecting. Please try again.' })
+    socket.send(JSON.stringify({ type: 'message', text }))
+    setChatMessage('')
+    closeEmojiPopup()
+  }
   const addEmoji = (code) => { setChatMessage((message) => `${message}${message && !/\s$/.test(message) ? ' ' : ''}:${code}: `); closeEmojiPopup(); requestAnimationFrame(() => inputRef.current?.focus()) }
+  const switchLanguage = (item) => {
+    if (item.code !== language.code) setMessages([])
+    setLanguage(item)
+    closeLanguagePopup()
+  }
+
+  const rainEndsAt = rain?.endsAt ? new Date(rain.endsAt).getTime() : 0
+  const rainStartsAt = rain?.startsAt ? new Date(rain.startsAt).getTime() : 0
+  const rainJoinEndsAt = rain?.joinEndsAt ? new Date(rain.joinEndsAt).getTime() : rainEndsAt
+  const synchronizedNow = clock + serverOffset
+  const rainTimer = rain ? Math.max(0, Math.floor((rainEndsAt - synchronizedNow) / 1000)) : 30 * 60
+  const rainAmount = Number(rain?.amount) || 200
+  const rainRunning = Boolean(rain && rain.status !== 'completed' && synchronizedNow >= rainStartsAt && synchronizedNow < rainJoinEndsAt)
+  const rainAcceptsTips = Boolean(rain && rain.status !== 'completed' && synchronizedNow < rainStartsAt)
+  const userId = user?.uuid || user?.id
+  const joinedRain = Boolean(userId && rain?.entries?.some((entry) => entry.uuid === userId))
+  useEffect(() => {
+    if (rainRunning) openRainJoin()
+    else closeRainJoin()
+  }, [closeRainJoin, openRainJoin, rainRunning])
+  const joinRain = () => {
+    if (!requireAuth()) return
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) {
+      notify({ type: 'error', message: 'Chat is reconnecting. Please try again.' })
+      return
+    }
+    socket.send(JSON.stringify({ type: 'rainJoin' }))
+  }
+  const openRainTip = () => {
+    if (!requireAuth()) return
+    if (!rainAcceptsTips) {
+      notify({ type: 'error', message: 'This rain can no longer receive tips.' })
+      return
+    }
+    setShowRainTip(true)
+  }
+  const tipRain = (amount) => {
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) {
+      notify({ type: 'error', message: 'Chat is reconnecting. Please try again.' })
+      return
+    }
+    socket.send(JSON.stringify({ type: 'rainTip', amount }))
+    setShowRainTip(false)
+  }
 
   return (
-    <aside ref={chatRef} id="chat" className={`${isChatOpen ? 'chat-open' : ''}${rainTimer > 0 ? ' chat-rain' : ''}${isEmojiExpanded ? ' chat-emoji-open' : ''}`.trim()} {...scope}>
+    <aside ref={chatRef} id="chat" className={`${isChatOpen ? 'chat-open' : ''}${isRainJoinRendered ? ' chat-rain' : ''}${isEmojiExpanded ? ' chat-emoji-open' : ''}`.trim()} {...scope}>
       <div className="chat-header" {...scope}>
-        <RainPool amount={rainAmount} timer={rainTimer} />
+        <RainPool amount={rainAmount} timer={rainTimer} onTip={openRainTip} />
       </div>
       <div className="chat-proper-functions" {...scope}>
         <div className="chat-content" {...scope}>
@@ -180,7 +395,7 @@ function Chat({ onToggle }) {
             <div className="messages-list" {...scope}>{messages.map((message) => <ChatMessage message={message} emojis={chatEmojis} key={message.id} />)}</div>
           </div>
         </div>
-        {rainTimer > 0 && <div className="content-rain" {...scope}><RainJoin amount={rainAmount} timer={rainTimer} joined={joinedRain} onJoin={() => setJoinedRain(true)} /></div>}
+        {isRainJoinRendered && <div className={`content-rain ${rainJoinClass('fade')}`.trim()} {...scope}><RainJoin amount={rainAmount} timer={rainTimer} joined={joinedRain} participantsCount={rain?.participantsCount || rain?.entries?.length || 0} onJoin={joinRain} /></div>}
         <div className="chat-footer" {...scope}>
           <div className="footer-input-wrapper" {...scope}>
             <div ref={emojiRef} className={`footer-input${isEmojiExpanded ? ' footer-input-emoji-open' : ''}`} {...scope}>
@@ -207,10 +422,10 @@ function Chat({ onToggle }) {
                     <img className="language-flag" src={language.flag} alt="" {...scope} />
                     <span className="language-code" {...scope}>{language.code.toUpperCase()}</span>
                     <span className="language-online-dot" {...scope} />
-                    <span className="language-online-count" {...scope}>0</span>
+                    <span className="language-online-count" {...scope}>{onlineByRoom[language.code] || 0}</span>
                     <SiteIcon name="chevron-down" className={`language-chevron${isLanguageExpanded ? ' language-chevron-open' : ''}`} {...scope} />
                   </button>
-                  {isLanguageRendered && <div className={`language-menu ${languageMenuClass('language-menu')}`.trim()} {...scope}>{languages.map((item) => <button key={item.code} className={item.code === language.code ? 'language-active' : ''} type="button" onClick={() => { setLanguage(item); closeLanguagePopup() }} {...scope}><img src={item.flag} alt="" {...scope} /><span {...scope}>{item.label}</span></button>)}</div>}
+                  {isLanguageRendered && <div className={`language-menu ${languageMenuClass('language-menu')}`.trim()} {...scope}>{languages.map((item) => <button key={item.code} className={item.code === language.code ? 'language-active' : ''} type="button" onClick={() => switchLanguage(item)} {...scope}><img src={item.flag} alt="" {...scope} /><span {...scope}>{item.label}</span></button>)}</div>}
                 </div>
               </div>
             </div>
@@ -220,6 +435,7 @@ function Chat({ onToggle }) {
       <div className="chat-toggle" {...scope}>
         <button type="button" aria-label={isChatOpen ? 'Close chat' : 'Open chat'} onClick={() => setIsChatOpen((open) => !open)} {...scope}><div className="button-inner" {...scope}><SiteIcon name="chat" {...scope} /></div></button>
       </div>
+      {showRainTip && <ModalAnimation label="Tip Rain" onClose={() => setShowRainTip(false)}><RainTipModal balance={user?.coins} onSubmit={tipRain} /></ModalAnimation>}
     </aside>
   )
 }

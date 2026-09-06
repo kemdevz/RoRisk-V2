@@ -76,6 +76,15 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
   const insertRain = async () => {
     const rain = createLocalRain()
     if (!persistent) return rain
+    try {
+      const rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_get_or_create_active_rain', {
+        method: 'POST',
+        body: '{}',
+      })
+      if (rows?.[0]) return rows[0]
+    } catch {
+      // Older databases fall back until the atomic-rain migration is applied.
+    }
     const rows = await databaseRequest(env, '/rest/v1/rorisk_rains?select=*', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
@@ -142,7 +151,15 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
 
   const initialize = async () => {
     try {
-      const rows = await databaseRequest(env, '/rest/v1/rorisk_rains?status=in.(created,running)&order=created_at.desc&limit=1&select=*')
+      let rows
+      try {
+        rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_get_or_create_active_rain', {
+          method: 'POST',
+          body: '{}',
+        })
+      } catch {
+        rows = await databaseRequest(env, '/rest/v1/rorisk_rains?status=in.(created,running)&order=ends_at.asc,created_at.asc,uuid.asc&limit=1&select=*')
+      }
       current = rows?.[0] || await insertRain()
     } catch (error) {
       persistent = false

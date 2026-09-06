@@ -349,7 +349,8 @@ function Chat({ onToggle, user }) {
   const rainTimer = rain ? Math.max(0, Math.floor((rainEndsAt - synchronizedNow) / 1000)) : 30 * 60
   const rainAmount = Number(rain?.amount) || 200
   const rainRunning = Boolean(rain && rain.status !== 'completed' && synchronizedNow >= rainStartsAt && synchronizedNow < rainJoinEndsAt)
-  const rainAcceptsTips = Boolean(rain && rain.status !== 'completed' && synchronizedNow < rainStartsAt)
+  const rainTipCutoff = rainEndsAt - (2 * 60 * 1000)
+  const rainAcceptsTips = Boolean(rain && rain.status !== 'completed' && synchronizedNow < rainTipCutoff)
   const userId = user?.uuid || user?.id
   const joinedRain = Boolean(userId && rain?.entries?.some((entry) => entry.uuid === userId))
   useEffect(() => {

@@ -10,27 +10,40 @@ function iso(value) {
 
 function serverCredentials(env) {
   return {
-    key: env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '',
+    keys: [...new Set([env.SUPABASE_SERVICE_ROLE_KEY, env.SUPABASE_SECRET_KEY].filter(Boolean))],
     url: String(env.SUPABASE_URL || '').replace(/\/$/, ''),
   }
 }
 
-async function databaseRequest(env, path, options = {}) {
-  const { key, url } = serverCredentials(env)
-  if (!key || !url) throw new Error('Rain persistence is not configured.')
-  const response = await fetch(`${url}${path}`, {
-    ...options,
-    headers: {
-      apikey: key,
-      ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}),
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
-  const text = await response.text()
-  const body = text ? JSON.parse(text) : null
-  if (!response.ok) throw new Error(body?.message || body?.hint || 'Rain database request failed.')
-  return body
+async function databaseRequest(env, path, options = {}, synchronizeClock) {
+  const { keys, url } = serverCredentials(env)
+  if (!keys.length || !url) throw new Error('Rain persistence is not configured.')
+
+  let lastError = null
+  for (const [index, key] of keys.entries()) {
+    const requestedAt = Date.now()
+    const response = await fetch(`${url}${path}`, {
+      ...options,
+      headers: {
+        apikey: key,
+        ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}),
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+    const receivedAt = Date.now()
+    const remoteTime = Date.parse(response.headers.get('date') || '')
+    if (Number.isFinite(remoteTime)) synchronizeClock?.(remoteTime - ((requestedAt + receivedAt) / 2))
+
+    const text = await response.text()
+    let body
+    try { body = text ? JSON.parse(text) : null } catch { body = null }
+    if (response.ok) return body
+
+    lastError = new Error(body?.message || body?.hint || 'Rain database request failed.')
+    if (![401, 403].includes(response.status) || index === keys.length - 1) throw lastError
+  }
+  throw lastError || new Error('Rain database request failed.')
 }
 
 function createLocalRain(now = Date.now()) {
@@ -70,6 +83,10 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
   let current = null
   let persistent = true
   let changing = false
+  let databaseOffsetMs = 0
+
+  const now = () => Date.now() + databaseOffsetMs
+  const request = (path, options) => databaseRequest(env, path, options, (offset) => { databaseOffsetMs = offset })
 
   const emit = () => onUpdate?.(publicRain(current))
 
@@ -77,7 +94,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     const rain = createLocalRain()
     if (!persistent) return rain
     try {
-      const rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_get_or_create_active_rain', {
+      const rows = await request('/rest/v1/rpc/rorisk_get_or_create_active_rain', {
         method: 'POST',
         body: '{}',
       })
@@ -85,7 +102,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     } catch {
       // Older databases fall back until the atomic-rain migration is applied.
     }
-    const rows = await databaseRequest(env, '/rest/v1/rorisk_rains?select=*', {
+    const rows = await request('/rest/v1/rorisk_rains?select=*', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(rain),
@@ -94,9 +111,9 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
   }
 
   const patchRain = async (uuid, values) => {
-    const nextValues = { ...values, updated_at: iso(Date.now()) }
+    const nextValues = { ...values, updated_at: iso(now()) }
     if (!persistent) return { ...current, ...nextValues }
-    const rows = await databaseRequest(env, `/rest/v1/rorisk_rains?uuid=eq.${encodeURIComponent(uuid)}&select=*`, {
+    const rows = await request(`/rest/v1/rorisk_rains?uuid=eq.${encodeURIComponent(uuid)}&select=*`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(nextValues),
@@ -104,14 +121,37 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     return rows?.[0] || current
   }
 
+  const normalizeCycleLength = async (rain) => {
+    if (!rain) return rain
+    const createdAt = new Date(rain.created_at).getTime()
+    const endsAt = new Date(rain.ends_at).getTime()
+    const startsAt = new Date(rain.starts_at).getTime()
+    const joinEndsAt = new Date(rain.join_ends_at).getTime()
+    if (!Number.isFinite(createdAt) || !Number.isFinite(endsAt)) return rain
+
+    const correctedEndsAt = Math.min(endsAt, createdAt + CYCLE_MS)
+    const correctedStartsAt = correctedEndsAt - JOIN_WINDOW_MS
+    const scheduleMatches = Math.abs(startsAt - correctedStartsAt) < 1000
+      && Math.abs(joinEndsAt - correctedEndsAt) < 1000
+      && endsAt === correctedEndsAt
+    if (scheduleMatches) return rain
+
+    current = rain
+    return patchRain(rain.uuid, {
+      starts_at: iso(correctedStartsAt),
+      ends_at: iso(correctedEndsAt),
+      join_ends_at: iso(correctedEndsAt),
+    })
+  }
+
   const settle = async () => {
     if (!current || current.status === 'completed') return
     if (persistent) {
-      const rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_settle_rain', {
+      const rows = await request('/rest/v1/rpc/rorisk_settle_rain', {
         method: 'POST',
         body: JSON.stringify({ p_rain_uuid: current.uuid }),
       })
-      current = rows?.[0] || { ...current, status: 'completed', updated_at: iso(Date.now()) }
+      current = rows?.[0] || { ...current, status: 'completed', updated_at: iso(now()) }
     } else {
       const entries = Array.isArray(current.entries) ? current.entries : []
       const amount = Number(current.coin_amount) || 0
@@ -121,7 +161,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
         ...current,
         status: 'completed',
         entries: entries.map((entry, index) => ({ ...entry, payout: base + (index < remainder ? 1 : 0) })),
-        updated_at: iso(Date.now()),
+        updated_at: iso(now()),
       }
     }
     emit()
@@ -132,13 +172,13 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
 
   const tick = async () => {
     if (!current || changing) return
-    const now = Date.now()
+    const currentTime = now()
     const startsAt = new Date(current.starts_at).getTime()
     const endsAt = new Date(current.ends_at).getTime()
     try {
       changing = true
-      if (now >= endsAt) await settle()
-      else if (now >= startsAt && current.status === 'created') {
+      if (currentTime >= endsAt) await settle()
+      else if (currentTime >= startsAt && current.status === 'created') {
         current = await patchRain(current.uuid, { status: 'running' })
         emit()
       }
@@ -153,14 +193,14 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     try {
       let rows
       try {
-        rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_get_or_create_active_rain', {
+        rows = await request('/rest/v1/rpc/rorisk_get_or_create_active_rain', {
           method: 'POST',
           body: '{}',
         })
       } catch {
-        rows = await databaseRequest(env, '/rest/v1/rorisk_rains?status=in.(created,running)&order=ends_at.asc,created_at.asc,uuid.asc&limit=1&select=*')
+        rows = await request('/rest/v1/rorisk_rains?status=in.(created,running)&order=ends_at.asc,created_at.asc,uuid.asc&limit=1&select=*')
       }
-      current = rows?.[0] || await insertRain()
+      current = await normalizeCycleLength(rows?.[0] || await insertRain())
     } catch (error) {
       persistent = false
       current = createLocalRain()
@@ -173,10 +213,10 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
   const join = async (user) => {
     await tick()
     if (!user) throw new Error('Please sign in to perform this action.')
-    const now = Date.now()
+    const currentTime = now()
     const startsAt = new Date(current?.starts_at).getTime()
     const joinEndsAt = new Date(current?.join_ends_at).getTime()
-    if (!current || current.status === 'completed' || now < startsAt || now >= joinEndsAt) {
+    if (!current || current.status === 'completed' || currentTime < startsAt || currentTime >= joinEndsAt) {
       throw new Error('This rain can no longer be joined.')
     }
     if (current.status !== 'running') {
@@ -184,7 +224,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
       emit()
     }
     if (persistent) {
-      const rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_join_rain', {
+      const rows = await request('/rest/v1/rpc/rorisk_join_rain', {
         method: 'POST',
         body: JSON.stringify({ p_rain_uuid: current.uuid, p_user_uuid: user.id }),
       })
@@ -197,9 +237,9 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
           roblox_id: user.robloxId || null,
           username: user.username,
           payout: 0,
-          joined_at: iso(Date.now()),
+          joined_at: iso(now()),
         }],
-        updated_at: iso(Date.now()),
+        updated_at: iso(now()),
       }
     }
     emit()
@@ -212,9 +252,10 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     if (!user) throw new Error('Please sign in to perform this action.')
     if (!Number.isSafeInteger(coinAmount) || coinAmount < 100 || coinAmount > 500000) throw new Error('Your entered rain tip amount is invalid.')
     if (Number(user.coins) < coinAmount) throw new Error('You do not have enough Coins.')
-    if (!current || current.status === 'completed' || Date.now() >= new Date(current.starts_at).getTime()) throw new Error('This rain can no longer receive tips.')
+    const tipCutoff = new Date(current?.ends_at).getTime() - JOIN_WINDOW_MS
+    if (!current || current.status === 'completed' || !Number.isFinite(tipCutoff) || now() >= tipCutoff) throw new Error('This rain can no longer receive tips.')
     if (persistent) {
-      const rows = await databaseRequest(env, '/rest/v1/rpc/rorisk_tip_rain', {
+      const rows = await request('/rest/v1/rpc/rorisk_tip_rain', {
         method: 'POST',
         body: JSON.stringify({ p_rain_uuid: current.uuid, p_user_uuid: user.id, p_coin_amount: coinAmount }),
       })
@@ -228,9 +269,9 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
           roblox_id: user.robloxId || null,
           username: user.username,
           coin_amount: coinAmount,
-          tipped_at: iso(Date.now()),
+          tipped_at: iso(now()),
         }],
-        updated_at: iso(Date.now()),
+        updated_at: iso(now()),
       }
     }
     emit()
@@ -243,6 +284,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
 
   return {
     getSnapshot: () => publicRain(current),
+    getServerTime: now,
     join,
     tip,
   }

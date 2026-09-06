@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/audit-production-secrets.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "vite preview --host 0.0.0.0"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import SiteIcon from './Icons'
 
 const cashierScope = { 'data-v-d934db46': '' }
+const amountNumberScope = { 'data-v-2edbedb3': '' }
 const userScope = { 'data-v-37d0061e': '' }
 const notificationScope = { 'data-v-16e4a512': '' }
 
@@ -71,6 +72,45 @@ function formatBalance(value) {
   return Math.floor(Number(value) || 0).toLocaleString('en-US')
 }
 
+function AmountNumber({ amount, className = '', isPlus = false }) {
+  const target = Number(amount) || 0
+  const [current, setCurrent] = useState(target)
+  const currentRef = useRef(target)
+  const intervalRef = useRef(null)
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      currentRef.current = target
+      setCurrent(target)
+      return undefined
+    }
+
+    if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
+    const step = Math.floor(target - currentRef.current) / 60
+    intervalRef.current = window.setInterval(() => {
+      const next = Math.floor(currentRef.current + step)
+      if ((step >= 0 && next >= target) || (step <= 0 && next <= target)) {
+        window.clearInterval(intervalRef.current)
+        intervalRef.current = null
+        currentRef.current = target
+        setCurrent(target)
+        return
+      }
+      currentRef.current = next
+      setCurrent(next)
+    }, 1000 / 60)
+
+    return () => {
+      if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }, [target])
+
+  return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current)}</span></div>
+}
+
 function levelTheme(level) {
   if (level >= 100) return 'red'
   if (level >= 75) return 'orange'
@@ -86,10 +126,15 @@ function RankBadge({ rank, className = '' }) {
 
 function NavbarCashier({ user }) {
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
+  const [balanceChanges, setBalanceChanges] = useState([])
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
   const areaRef = useRef(null)
+  const previousBalanceRef = useRef(null)
+  const balanceKeyRef = useRef(null)
+  const animationFramesRef = useRef(new Set())
+  const animationTimersRef = useRef(new Set())
   const isRoCoins = currency === 'rocoins'
-  const balance = isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)
+  const balance = Number(isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)) || 0
   const currencyIcon = isRoCoins ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
   const alternateIcon = isRoCoins ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
   const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
@@ -114,19 +159,57 @@ function NavbarCashier({ user }) {
     }
   }, [closeDropdown])
 
+  useEffect(() => {
+    const previousBalance = previousBalanceRef.current
+    previousBalanceRef.current = balance
+    if (balanceKeyRef.current !== currency) {
+      balanceKeyRef.current = currency
+      return
+    }
+    if (previousBalance === null || balance === previousBalance) return
+
+    const id = Date.now() + Math.random()
+    setBalanceChanges((changes) => [...changes, { id, amount: balance - previousBalance, phase: 'enter' }])
+    const firstFrame = requestAnimationFrame(() => {
+      animationFramesRef.current.delete(firstFrame)
+      const secondFrame = requestAnimationFrame(() => {
+        animationFramesRef.current.delete(secondFrame)
+        setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'open' } : change))
+      })
+      animationFramesRef.current.add(secondFrame)
+    })
+    animationFramesRef.current.add(firstFrame)
+
+    const leaveTimer = window.setTimeout(() => {
+      animationTimersRef.current.delete(leaveTimer)
+      setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'leave' } : change))
+      const removeTimer = window.setTimeout(() => {
+        animationTimersRef.current.delete(removeTimer)
+        setBalanceChanges((changes) => changes.filter((change) => change.id !== id))
+      }, 200)
+      animationTimersRef.current.add(removeTimer)
+    }, 3000)
+    animationTimersRef.current.add(leaveTimer)
+  }, [balance, currency])
+
+  useEffect(() => () => {
+    for (const frame of animationFramesRef.current) cancelAnimationFrame(frame)
+    for (const timer of animationTimersRef.current) window.clearTimeout(timer)
+  }, [])
+
   return (
     <div className="navbar-cashier" {...cashierScope}>
       <div className="cashier-container" {...cashierScope}>
         <div className="balance-area" ref={areaRef} {...cashierScope}>
           <div className="cashier-balance" {...cashierScope}>
             <div className={`balance-inner ${isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
-              <span className="balance-inner-left" {...cashierScope}>
+              <div className="balance-inner-left" {...cashierScope}>
                 <img src={currencyIcon} alt="icon" {...cashierScope} />
-                <span className="cashier-balance-text" {...cashierScope}>{formatBalance(balance)}</span>
-              </span>
-              <span className="balance-inner-right" {...cashierScope}>
+                <AmountNumber className="cashier-balance-text" amount={balance} />
+              </div>
+              <div className="balance-inner-right" {...cashierScope}>
                 <span className={`currency-badge navbar-currency-badge ${isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
-              </span>
+              </div>
             </div>
           </div>
           {rendered && (
@@ -145,6 +228,16 @@ function NavbarCashier({ user }) {
               </div>
             </div>
           )}
+          <div className="balance-changes" {...cashierScope}>
+            {balanceChanges.map((change) => {
+              const animationClass = change.phase === 'enter'
+                ? ' fade-zoom-enter-active fade-zoom-enter'
+                : change.phase === 'leave'
+                  ? ' fade-zoom-leave-active fade-zoom-leave-to'
+                  : ' fade-zoom-enter-active'
+              return <div key={change.id} className={`balance-change ${isRoCoins ? 'rocoin' : 'coin'} ${change.amount > 0 ? 'plus' : 'minus'}${animationClass}`} {...cashierScope}><img src={currencyIcon} alt="icon" {...cashierScope} /><AmountNumber className="balance-change-text" amount={change.amount} isPlus={change.amount > 0} /></div>
+            })}
+          </div>
         </div>
       </div>
     </div>

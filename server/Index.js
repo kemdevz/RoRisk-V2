@@ -228,7 +228,7 @@ async function handleRequest(request, response, env) {
   try {
     if (request.method === 'GET' && url.pathname === '/api/auth/config') {
       sendJson(response, 200, {
-        hcaptchaSiteKey: env.VITE_HCAPTCHA_SITE_KEY || '',
+        hcaptchaSiteKey: env.HCAPTCHA_SITE_KEY || '',
       })
       return true
     }

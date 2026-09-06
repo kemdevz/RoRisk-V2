@@ -187,7 +187,7 @@ export function attachRealtimeServer(httpServer, signValue, env = {}) {
 
   const rainService = createRainService(env, {
     onUpdate(rain) {
-      broadcast({ type: 'rain', rain, serverTime: Date.now() })
+      broadcast({ type: 'rain', rain, serverTime: rainService.getServerTime() })
     },
     onCompleted(rain) {
       for (const socket of clients) {
@@ -228,7 +228,7 @@ export function attachRealtimeServer(httpServer, signValue, env = {}) {
           socket.sessionId = String(event.sessionId)
         }
         safeSend(socket, { type: 'history', room: socket.room, messages: history[socket.room] })
-        safeSend(socket, { type: 'rain', rain: rainService.getSnapshot(), serverTime: Date.now() })
+        safeSend(socket, { type: 'rain', rain: rainService.getSnapshot(), serverTime: rainService.getServerTime() })
         broadcastPresence()
         return
       }

@@ -44,9 +44,11 @@ function SidebarUserCard({ user }) {
           <button className={`sidebar-user-btn sidebar-user-btn-claim${claimMenuOpen ? ' sidebar-user-btn-active' : ''}`} type="button" aria-expanded={claimMenuOpen} onClick={() => setClaimMenuOpen((value) => !value)} {...userCardScope}>
             <span {...userCardScope}>CLAIM</span><SiteIcon name="chevron-down" className={`sidebar-claim-caret${claimMenuOpen ? ' sidebar-claim-caret-open' : ''}`} {...userCardScope} />
           </button>
-          {claimMenuOpen && <div className="sidebar-claim-menu" {...userCardScope}><div className="sidebar-claim-empty" {...userCardScope}>No daily cases available</div></div>}
         </div>
         <button className="sidebar-user-btn sidebar-user-btn-rewards" type="button" onClick={goToRewards} {...userCardScope}>REWARDS</button>
+        <div className={`sidebar-claim-menu${claimMenuOpen ? ' sidebar-claim-menu-visible' : ''}`} aria-hidden={!claimMenuOpen} {...userCardScope}>
+          <div className="sidebar-claim-empty" {...userCardScope}>No daily cases available</div>
+        </div>
       </div>
     </section>
   )
@@ -78,7 +80,7 @@ const profile = [
   ['settings', 'Settings', '/settings'],
 ]
 
-function SidebarSection({ title, items, showLabels, pathname }) {
+function SidebarSection({ title, items, showLabels, pathname, onAction }) {
   const [open, setOpen] = useState(true)
   return (
     <section className="sidebar-content" data-v-4fc2a52c="">
@@ -90,13 +92,19 @@ function SidebarSection({ title, items, showLabels, pathname }) {
       {(open || !showLabels) && (
         <div className="sidebar-items" data-v-4fc2a52c="">
           {items.map(([icon, label, href]) => (
+            onAction?.[href] ? (
+              <button className={`sidebar-item${pathname === href ? ' sidebar-item-selected' : ''}`} type="button" key={label} onClick={onAction[href]} data-v-4fc2a52c="">
+                <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
+                {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
+              </button>
+            ) :
             icon === 'support' ? (
             <button className="sidebar-item" type="button" key={label} data-v-4fc2a52c="">
               <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
               {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
             </button>
             ) : (
-              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}${pathname === href ? ' router-link-active' : ''}`} href={href} aria-current={pathname === href ? 'page' : undefined} key={label} data-v-4fc2a52c="">
+              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}${href === '/race' ? ' race' : ''}${pathname === href ? ' router-link-active' : ''}`} href={href} aria-current={pathname === href ? 'page' : undefined} key={label} data-v-4fc2a52c="">
                 <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
                 {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
               </a>
@@ -108,7 +116,7 @@ function SidebarSection({ title, items, showLabels, pathname }) {
   )
 }
 
-function Sidebar({ pathname, user }) {
+function Sidebar({ pathname, user, onOpenWallet, onOpenSettings }) {
   const [width, setWidth] = useState(window.innerWidth)
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1200)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1200)
@@ -143,7 +151,11 @@ function Sidebar({ pathname, user }) {
             </div>
           </a>
         )}
-        {user && <SidebarSection title="Profile" items={profile} showLabels={showLabels} pathname={pathname} />}
+        {user && <SidebarSection title="Profile" items={profile} showLabels={showLabels} pathname={pathname} onAction={{
+          '/wallet': () => onOpenWallet?.('deposit'),
+          '/vault': () => onOpenWallet?.('vault'),
+          '/settings': () => onOpenSettings?.(),
+        }} />}
         <SidebarSection title="More" items={more} showLabels={showLabels} pathname={pathname} />
       </div>
     </aside>

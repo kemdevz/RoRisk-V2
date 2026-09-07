@@ -124,7 +124,7 @@ function RankBadge({ rank, className = '' }) {
   return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
 }
 
-function NavbarCashier({ user }) {
+function NavbarCashier({ user, onOpenWallet }) {
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const [balanceChanges, setBalanceChanges] = useState([])
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
@@ -224,7 +224,7 @@ function NavbarCashier({ user }) {
                   </span>
                 </button>
                 <div className="currency-dropdown-divider" aria-hidden="true" {...cashierScope} />
-                <button className="currency-dropdown-option vault-option" type="button" {...cashierScope}><SiteIcon name="vault" {...cashierScope} /><span {...cashierScope}>Vault</span></button>
+                <button className="currency-dropdown-option vault-option" type="button" onClick={() => { closeDropdown(); onOpenWallet?.('vault') }} {...cashierScope}><SiteIcon name="vault" {...cashierScope} /><span {...cashierScope}>Vault</span></button>
               </div>
             </div>
           )}
@@ -268,7 +268,7 @@ function NavbarNotifications() {
   )
 }
 
-function NavbarUser({ user, onSignOut }) {
+function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings }) {
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(150, 'language-menu')
   const menuRef = useRef(null)
   const { level, progress } = userLevelData(user)
@@ -286,7 +286,11 @@ function NavbarUser({ user, onSignOut }) {
 
   const navigate = (path) => {
     closeDropdown()
-    if (path === '/rewards') {
+    if (path === '/settings') {
+      onOpenSettings?.()
+    } else if (path === '/wallet') {
+      onOpenWallet?.('redeem')
+    } else if (path) {
       window.history.pushState({}, '', path)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }
@@ -305,7 +309,7 @@ function NavbarUser({ user, onSignOut }) {
       {rendered && (
         <div className={`user-dropdown-menu ${transitionClass}`.trim()} {...userScope}>
           {[['bets', 'Statistics'], ['wallet', 'Transactions'], ['affiliates', 'Affiliates'], ['rewards', 'Redeem'], ['settings', 'Settings']].map(([icon, label]) => (
-            <button type="button" key={label} onClick={() => navigate(label === 'Redeem' ? '/rewards' : '')} {...userScope}><SiteIcon name={icon} className="user-dropdown-icon" {...userScope} /><span {...userScope}>{label}</span></button>
+            <button type="button" key={label} onClick={() => navigate(label === 'Redeem' ? '/wallet' : label === 'Affiliates' ? '/affiliates' : label === 'Settings' ? '/settings' : '')} {...userScope}><SiteIcon name={icon} className="user-dropdown-icon" {...userScope} /><span {...userScope}>{label}</span></button>
           ))}
           <button className="user-dropdown-logout" type="button" onClick={onSignOut} {...userScope}><SiteIcon name="back" className="user-dropdown-icon" {...userScope} /><span {...userScope}>Sign Out</span></button>
         </div>
@@ -357,7 +361,7 @@ function NavbarLogo() {
   )
 }
 
-function Header({ pathname, user, onSignIn, onRegister, onSignOut }) {
+function Header({ pathname, user, onSignIn, onRegister, onSignOut, onOpenWallet, onOpenSettings }) {
   return (
     <div className="app-header" bis_skin_checked="1">
       <nav data-v-1cdc1483="" id="navbar" className={user ? undefined : 'navbar-guest'}>
@@ -425,7 +429,7 @@ function Header({ pathname, user, onSignIn, onRegister, onSignOut }) {
             </a>
           </div>
         </div>
-        <div data-v-1cdc1483="" className="navbar-mid" bis_skin_checked="1">{user && <NavbarCashier user={user} />}</div>
+        <div data-v-1cdc1483="" className="navbar-mid" bis_skin_checked="1">{user && <NavbarCashier user={user} onOpenWallet={onOpenWallet} />}</div>
         <div data-v-1cdc1483="" className="navbar-right" bis_skin_checked="1">
           {!user ? <div
             data-v-48b2574b=""
@@ -451,12 +455,12 @@ function Header({ pathname, user, onSignIn, onRegister, onSignOut }) {
             </button>
           </div> : <>
             <div className="navbar-cashier-actions" data-v-1cdc1483="">
-              <button className="navbar-action-btn navbar-action-btn-deposit" type="button" aria-label="Deposit" data-v-1cdc1483=""><span className="navbar-action-label" data-v-1cdc1483="">Deposit</span><span className="navbar-action-plus" aria-hidden="true" data-v-1cdc1483="">+</span></button>
-              <button className="navbar-action-btn navbar-action-btn-withdraw" type="button" data-v-1cdc1483="">Withdraw</button>
+              <button className="navbar-action-btn navbar-action-btn-deposit" type="button" aria-label="Deposit" onClick={() => onOpenWallet?.('deposit')} data-v-1cdc1483=""><span className="navbar-action-label" data-v-1cdc1483="">Deposit</span><span className="navbar-action-plus" aria-hidden="true" data-v-1cdc1483="">+</span></button>
+              <button className="navbar-action-btn navbar-action-btn-withdraw" type="button" onClick={() => onOpenWallet?.('withdraw')} data-v-1cdc1483="">Withdraw</button>
             </div>
             <div className="divider-vertical" aria-hidden="true" data-v-1cdc1483="" />
             <NavbarNotifications />
-            <NavbarUser user={user} onSignOut={onSignOut} />
+            <NavbarUser user={user} onSignOut={onSignOut} onOpenWallet={onOpenWallet} onOpenSettings={onOpenSettings} />
           </>}
         </div>
       </nav>

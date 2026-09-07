@@ -6,8 +6,14 @@ import LoadingScreen from './components/LoadingScreen'
 import Sidebar from './components/Sidebar'
 import SigninModal from './components/SigninModal'
 import Notifications from './components/Notifications'
+import ModalAnimation from './components/ModalAnimation'
+import SettingsModal from './components/SettingsModal'
+import WalletModal from './components/WalletModal'
 import Home from './Pages/Home'
 import Rewards from './Pages/Rewards'
+import Market from './Pages/Market'
+import Affiliates from './Pages/Affiliates'
+import Race from './Pages/Race'
 import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 
@@ -28,6 +34,8 @@ function App() {
   const [routePhase, setRoutePhase] = useState('idle')
   const [isChatOpen, setIsChatOpen] = useState(() => window.innerWidth > 1800)
   const [authModal, setAuthModal] = useState(null)
+  const [siteModal, setSiteModal] = useState(null)
+  const [siteModalClosing, setSiteModalClosing] = useState(false)
   const [user, setUser] = useState(readStoredUser)
   const [loaderPhase, setLoaderPhase] = useState('visible')
   const [pagePhase, setPagePhase] = useState('idle')
@@ -89,7 +97,7 @@ function App() {
       if (!anchor || anchor.target || anchor.hasAttribute('download')) return
 
       const url = new URL(anchor.href, window.location.href)
-      if (url.origin !== window.location.origin || !['/', '/rewards'].includes(url.pathname)) return
+      if (url.origin !== window.location.origin || !['/', '/rewards', '/market', '/affiliates', '/race'].includes(url.pathname)) return
 
       event.preventDefault()
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return
@@ -173,7 +181,15 @@ function App() {
 
   if (loaderPhase !== 'done') return <LoadingScreen leaving={loaderPhase === 'leaving'} />
 
-  const Page = displayedPath === '/rewards' ? Rewards : Home
+  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race }
+  const Page = pages[displayedPath] || Home
+  const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
+  const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }
+  const closeSiteModal = () => setSiteModalClosing(true)
+  const openRobloxFromSettings = () => {
+    closeSiteModal()
+    window.setTimeout(() => setAuthModal('roblox'), 320)
+  }
   const routeClass = routePhase === 'leaving'
     ? 'route-page page-leave-active page-leave-to'
     : routePhase === 'entering'
@@ -184,9 +200,9 @@ function App() {
 
   return (
     <div className={`app${pagePhase !== 'idle' ? ' fade-enter-active' : ''}${pagePhase === 'enter' ? ' fade-enter-from' : ''}`}>
-      <Header pathname={pathname} user={user} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} onSignOut={handleSignOut} />
+      <Header pathname={pathname} user={user} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} onSignOut={handleSignOut} onOpenWallet={openWallet} onOpenSettings={openSettings} />
       <div className="app-body">
-        <Sidebar pathname={pathname} user={user} />
+        <Sidebar pathname={pathname} user={user} onOpenWallet={openWallet} onOpenSettings={openSettings} />
         <main
           className={`background${isChatOpen ? ' chat-open' : ''}`}
           style={{ backgroundImage: pathname === '/rewards' ? "url('/img/rewards.82057e5f.png')" : "url('/img/main.c55d6769.png')" }}
@@ -201,6 +217,9 @@ function App() {
       </div>
       <Chat user={user} onToggle={handleChatToggle} />
       {authModal && <SigninModal initialTab={authModal} onClose={() => setAuthModal(null)} onAuthenticated={handleAuthenticated} />}
+      {siteModal && <ModalAnimation label={siteModal.type === 'wallet' ? 'Wallet' : 'Settings'} closeRequest={siteModalClosing} onClose={() => { setSiteModal(null); setSiteModalClosing(false) }}>
+        {siteModal.type === 'wallet' ? <WalletModal initialTab={siteModal.tab} user={user} onRequestClose={closeSiteModal} /> : <SettingsModal user={user} onRequestClose={closeSiteModal} onConnectRoblox={openRobloxFromSettings} />}
+      </ModalAnimation>}
       <Notifications />
     </div>
   )

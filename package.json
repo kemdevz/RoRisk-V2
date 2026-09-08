@@ -3,14 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/audit-production-secrets.mjs",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start": "vite preview --host 0.0.0.0"
-  }
+    "preview": "vite preview --host 0.0.0.0 --port 10000",
+    "start": "vite preview --host 0.0.0.0 --port 10000"
+  },
   "dependencies": {
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

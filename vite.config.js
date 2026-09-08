@@ -2,7 +2,6 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import { roriskApi } from './server/Index.js'
 
-
 export default defineConfig(({ mode }) => {
   const loadedEnv = loadEnv(mode, '.', '')
   const serverEnv = Object.freeze({
@@ -15,17 +14,18 @@ export default defineConfig(({ mode }) => {
   })
 
   return {
-
     envPrefix: 'PUBLIC_CLIENT_',
     build: { sourcemap: false },
     plugins: [roriskApi(serverEnv), react()],
     server: {
       allowedHosts: ['rorisk-v2.onrender.com'],
-      host: '0.0.0.0', 
+      host: '0.0.0.0',
     },
     preview: {
       allowedHosts: ['rorisk-v2.onrender.com'],
       host: '0.0.0.0',
+      port: 10000, 
+      strictPort: true, 
     },
   }
 })

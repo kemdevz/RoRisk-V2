@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import SiteIcon from './Icons'
 import { notify } from '../lib/Notifications'
+import { setSoundVolume } from '../lib/Sounds'
 
 const scope = { 'data-v-dd524744': '', 'data-v-0eacb57e': '' }
 
@@ -20,7 +21,7 @@ function SettingsModal({ user, onRequestClose, onConnectRoblox }) {
   const changeVolume = (event) => {
     const next = Number(event.target.value)
     setVolume(next)
-    window.localStorage.setItem('rorisk_sound_volume', String(next))
+    setSoundVolume(next)
   }
 
   return <div className="modal-user-settings" {...scope}>

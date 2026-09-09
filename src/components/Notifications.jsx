@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NOTIFICATION_EVENT } from '../lib/Notifications'
+import { playSound } from '../lib/Sounds'
 
 const listScope = { 'data-v-164ec0fb': '' }
 const itemScope = { 'data-v-40da4c14': '' }
@@ -66,7 +67,10 @@ function Notifications() {
   const remove = useCallback((id) => setNotifications((current) => current.filter((item) => item.id !== id)), [])
 
   useEffect(() => {
-    const show = (event) => setNotifications((current) => [...current.slice(-3), event.detail])
+    const show = (event) => {
+      playSound(event.detail?.type === 'error' ? 'error' : 'success', { volume: 0.5 })
+      setNotifications((current) => [...current.slice(-3), event.detail])
+    }
     window.addEventListener(NOTIFICATION_EVENT, show)
     return () => window.removeEventListener(NOTIFICATION_EVENT, show)
   }, [])

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 
-const CYCLE_MS = 30 * 60 * 1000
+const POOL_MS = 30 * 60 * 1000
 const JOIN_WINDOW_MS = 2 * 60 * 1000
+const CYCLE_MS = POOL_MS + JOIN_WINDOW_MS
 const DEFAULT_POOL_AMOUNT = 200
 
 function iso(value) {
@@ -53,7 +54,7 @@ function createLocalRain(now = Date.now()) {
     coin_amount: DEFAULT_POOL_AMOUNT,
     entries: [],
     tips: [],
-    starts_at: iso(now + CYCLE_MS - JOIN_WINDOW_MS),
+    starts_at: iso(now + POOL_MS),
     ends_at: iso(now + CYCLE_MS),
     created_at: iso(now),
     join_ends_at: iso(now + CYCLE_MS),
@@ -129,8 +130,8 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     const joinEndsAt = new Date(rain.join_ends_at).getTime()
     if (!Number.isFinite(createdAt) || !Number.isFinite(endsAt)) return rain
 
-    const correctedEndsAt = Math.min(endsAt, createdAt + CYCLE_MS)
-    const correctedStartsAt = correctedEndsAt - JOIN_WINDOW_MS
+    const correctedEndsAt = createdAt + CYCLE_MS
+    const correctedStartsAt = createdAt + POOL_MS
     const scheduleMatches = Math.abs(startsAt - correctedStartsAt) < 1000
       && Math.abs(joinEndsAt - correctedEndsAt) < 1000
       && endsAt === correctedEndsAt
@@ -252,7 +253,7 @@ export function createRainService(env, { onUpdate, onCompleted } = {}) {
     if (!user) throw new Error('Please sign in to perform this action.')
     if (!Number.isSafeInteger(coinAmount) || coinAmount < 100 || coinAmount > 500000) throw new Error('Your entered rain tip amount is invalid.')
     if (Number(user.coins) < coinAmount) throw new Error('You do not have enough Coins.')
-    const tipCutoff = new Date(current?.ends_at).getTime() - JOIN_WINDOW_MS
+    const tipCutoff = new Date(current?.starts_at).getTime()
     if (!current || current.status === 'completed' || !Number.isFinite(tipCutoff) || now() >= tipCutoff) throw new Error('This rain can no longer receive tips.')
     if (persistent) {
       const rows = await request('/rest/v1/rpc/rorisk_tip_rain', {

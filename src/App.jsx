@@ -9,6 +9,8 @@ import Notifications from './components/Notifications'
 import ModalAnimation from './components/ModalAnimation'
 import SettingsModal from './components/SettingsModal'
 import WalletModal from './components/WalletModal'
+import StatisticsModal from './components/StatisticsModal'
+import TransactionsModal from './components/TransactionsModal'
 import Home from './Pages/Home'
 import Rewards from './Pages/Rewards'
 import Market from './Pages/Market'
@@ -185,6 +187,8 @@ function App() {
   const Page = pages[displayedPath] || Home
   const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
   const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }
+  const openStatistics = () => { setSiteModalClosing(false); setSiteModal({ type: 'statistics' }) }
+  const openTransactions = () => { setSiteModalClosing(false); setSiteModal({ type: 'transactions' }) }
   const closeSiteModal = () => setSiteModalClosing(true)
   const openRobloxFromSettings = () => {
     closeSiteModal()
@@ -200,7 +204,7 @@ function App() {
 
   return (
     <div className={`app${pagePhase !== 'idle' ? ' fade-enter-active' : ''}${pagePhase === 'enter' ? ' fade-enter-from' : ''}`}>
-      <Header pathname={pathname} user={user} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} onSignOut={handleSignOut} onOpenWallet={openWallet} onOpenSettings={openSettings} />
+      <Header pathname={pathname} user={user} onSignIn={() => setAuthModal('login')} onRegister={() => setAuthModal('login')} onSignOut={handleSignOut} onOpenWallet={openWallet} onOpenSettings={openSettings} onOpenStatistics={openStatistics} onOpenTransactions={openTransactions} />
       <div className="app-body">
         <Sidebar pathname={pathname} user={user} onOpenWallet={openWallet} onOpenSettings={openSettings} />
         <main
@@ -217,8 +221,8 @@ function App() {
       </div>
       <Chat user={user} onToggle={handleChatToggle} />
       {authModal && <SigninModal initialTab={authModal} onClose={() => setAuthModal(null)} onAuthenticated={handleAuthenticated} />}
-      {siteModal && <ModalAnimation label={siteModal.type === 'wallet' ? 'Wallet' : 'Settings'} closeRequest={siteModalClosing} onClose={() => { setSiteModal(null); setSiteModalClosing(false) }}>
-        {siteModal.type === 'wallet' ? <WalletModal initialTab={siteModal.tab} user={user} onRequestClose={closeSiteModal} /> : <SettingsModal user={user} onRequestClose={closeSiteModal} onConnectRoblox={openRobloxFromSettings} />}
+      {siteModal && <ModalAnimation label={siteModal.type === 'wallet' ? 'Wallet' : siteModal.type === 'settings' ? 'Settings' : siteModal.type === 'statistics' ? 'User Statistics' : 'Transactions'} closeRequest={siteModalClosing} onClose={() => { setSiteModal(null); setSiteModalClosing(false) }}>
+        {siteModal.type === 'wallet' ? <WalletModal initialTab={siteModal.tab} user={user} onRequestClose={closeSiteModal} /> : siteModal.type === 'settings' ? <SettingsModal user={user} onRequestClose={closeSiteModal} onConnectRoblox={openRobloxFromSettings} /> : siteModal.type === 'statistics' ? <StatisticsModal user={user} /> : <TransactionsModal user={user} />}
       </ModalAnimation>}
       <Notifications />
     </div>

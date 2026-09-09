@@ -346,11 +346,15 @@ function Chat({ onToggle, user }) {
   const rainStartsAt = rain?.startsAt ? new Date(rain.startsAt).getTime() : 0
   const rainJoinEndsAt = rain?.joinEndsAt ? new Date(rain.joinEndsAt).getTime() : rainEndsAt
   const synchronizedNow = clock + serverOffset
-  const rainTimer = rain ? Math.max(0, Math.floor((rainEndsAt - synchronizedNow) / 1000)) : 30 * 60
+  const rainClaimPhase = Boolean(rain && synchronizedNow >= rainStartsAt)
+  const rainTimer = rain
+    ? rainClaimPhase
+      ? Math.max(0, Math.ceil((rainEndsAt - synchronizedNow) / 1000))
+      : Math.max(0, Math.floor((rainStartsAt - synchronizedNow) / 1000))
+    : 30 * 60
   const rainAmount = Number(rain?.amount) || 200
   const rainRunning = Boolean(rain && rain.status !== 'completed' && synchronizedNow >= rainStartsAt && synchronizedNow < rainJoinEndsAt)
-  const rainTipCutoff = rainEndsAt - (2 * 60 * 1000)
-  const rainAcceptsTips = Boolean(rain && rain.status !== 'completed' && synchronizedNow < rainTipCutoff)
+  const rainAcceptsTips = Boolean(rain && rain.status !== 'completed' && synchronizedNow < rainStartsAt)
   const userId = user?.uuid || user?.id
   const joinedRain = Boolean(userId && rain?.entries?.some((entry) => entry.uuid === userId))
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import SiteIcon from './Icons'
+import { playSound } from '../lib/Sounds'
 
 const cashierScope = { 'data-v-d934db46': '' }
 const amountNumberScope = { 'data-v-2edbedb3': '' }
@@ -168,6 +169,8 @@ function NavbarCashier({ user, onOpenWallet }) {
     }
     if (previousBalance === null || balance === previousBalance) return
 
+    playSound('balance', { volume: 0.5 })
+
     const id = Date.now() + Math.random()
     setBalanceChanges((changes) => [...changes, { id, amount: balance - previousBalance, phase: 'enter' }])
     const firstFrame = requestAnimationFrame(() => {
@@ -268,7 +271,7 @@ function NavbarNotifications() {
   )
 }
 
-function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings }) {
+function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings, onOpenStatistics, onOpenTransactions }) {
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(150, 'language-menu')
   const menuRef = useRef(null)
   const { level, progress } = userLevelData(user)
@@ -290,6 +293,10 @@ function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings }) {
       onOpenSettings?.()
     } else if (path === '/wallet') {
       onOpenWallet?.('redeem')
+    } else if (path === '/statistics') {
+      onOpenStatistics?.()
+    } else if (path === '/transactions') {
+      onOpenTransactions?.()
     } else if (path) {
       window.history.pushState({}, '', path)
       window.dispatchEvent(new PopStateEvent('popstate'))
@@ -309,7 +316,7 @@ function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings }) {
       {rendered && (
         <div className={`user-dropdown-menu ${transitionClass}`.trim()} {...userScope}>
           {[['bets', 'Statistics'], ['wallet', 'Transactions'], ['affiliates', 'Affiliates'], ['rewards', 'Redeem'], ['settings', 'Settings']].map(([icon, label]) => (
-            <button type="button" key={label} onClick={() => navigate(label === 'Redeem' ? '/wallet' : label === 'Affiliates' ? '/affiliates' : label === 'Settings' ? '/settings' : '')} {...userScope}><SiteIcon name={icon} className="user-dropdown-icon" {...userScope} /><span {...userScope}>{label}</span></button>
+            <button type="button" key={label} onClick={() => navigate(label === 'Statistics' ? '/statistics' : label === 'Transactions' ? '/transactions' : label === 'Redeem' ? '/wallet' : label === 'Affiliates' ? '/affiliates' : '/settings')} {...userScope}><SiteIcon name={icon} className="user-dropdown-icon" {...userScope} /><span {...userScope}>{label}</span></button>
           ))}
           <button className="user-dropdown-logout" type="button" onClick={onSignOut} {...userScope}><SiteIcon name="back" className="user-dropdown-icon" {...userScope} /><span {...userScope}>Sign Out</span></button>
         </div>
@@ -361,7 +368,7 @@ function NavbarLogo() {
   )
 }
 
-function Header({ pathname, user, onSignIn, onRegister, onSignOut, onOpenWallet, onOpenSettings }) {
+function Header({ pathname, user, onSignIn, onRegister, onSignOut, onOpenWallet, onOpenSettings, onOpenStatistics, onOpenTransactions }) {
   return (
     <div className="app-header" bis_skin_checked="1">
       <nav data-v-1cdc1483="" id="navbar" className={user ? undefined : 'navbar-guest'}>
@@ -460,7 +467,7 @@ function Header({ pathname, user, onSignIn, onRegister, onSignOut, onOpenWallet,
             </div>
             <div className="divider-vertical" aria-hidden="true" data-v-1cdc1483="" />
             <NavbarNotifications />
-            <NavbarUser user={user} onSignOut={onSignOut} onOpenWallet={onOpenWallet} onOpenSettings={onOpenSettings} />
+            <NavbarUser user={user} onSignOut={onSignOut} onOpenWallet={onOpenWallet} onOpenSettings={onOpenSettings} onOpenStatistics={onOpenStatistics} onOpenTransactions={onOpenTransactions} />
           </>}
         </div>
       </nav>

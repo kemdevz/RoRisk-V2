@@ -21542,18 +21542,7 @@ p[data-v-6353188e] {
 }
 
 .wallet-flow-step {
-  animation: wallet-flow-step-in .4s cubic-bezier(.22,1,.36,1) both;
-}
-
-@keyframes wallet-flow-step-in {
-  0% {
-    opacity: 0;
-    transform: translateY(80px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  will-change: opacity,transform,height;
 }
 
 .settings-collapse[data-v-dd524744] {

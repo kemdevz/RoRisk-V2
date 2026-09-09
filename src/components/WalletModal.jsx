@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import SiteIcon from './Icons'
 import { notify } from '../lib/Notifications'
 
@@ -11,6 +12,7 @@ const cryptoDepositScope = { 'data-v-bcfd5424': '' }
 const cryptoWithdrawScope = { 'data-v-060d18fa': '' }
 const robuxModalScope = { 'data-v-f788d450': '' }
 const robuxDepositScope = { 'data-v-0559baa4': '' }
+const robuxWithdrawScope = { 'data-v-14a100d9': '' }
 const limitedModalScope = { 'data-v-8813ba3e': '' }
 const limitedDepositScope = { 'data-v-85a7adf0': '' }
 
@@ -156,6 +158,73 @@ function formatInteger(value) {
   return parsed.toLocaleString('en-US')
 }
 
+function useOutInState(initialValue, resolveElement, variant = 'step') {
+  const [value, setValue] = useState(initialValue)
+  const valueRef = useRef(initialValue)
+  const requestedRef = useRef(initialValue)
+  const runningRef = useRef(false)
+  const mountedRef = useRef(true)
+  const resolveElementRef = useRef(resolveElement)
+
+  useEffect(() => { resolveElementRef.current = resolveElement }, [resolveElement])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const animateElement = useCallback(async (element, direction) => {
+    if (!element || typeof element.animate !== 'function') return
+    const isModal = variant === 'modal'
+    const duration = isModal ? 300 : 400
+    const offset = isModal ? 'translateY(50px) scale(.85)' : 'translateY(80px)'
+    const height = element.scrollHeight
+    const visible = { opacity: 1, transform: 'translateY(0) scale(1)' }
+    const hidden = { opacity: 0, transform: offset }
+    if (!isModal) {
+      visible.height = `${height}px`
+      hidden.height = '0px'
+      element.style.overflow = 'hidden'
+    }
+    const keyframes = direction === 'leave' ? [visible, hidden] : [hidden, visible]
+    const easing = isModal
+      ? 'cubic-bezier(.075,.82,.165,1)'
+      : direction === 'leave' ? 'cubic-bezier(.55,.085,.68,.53)' : 'cubic-bezier(.215,.61,.355,1)'
+    const animation = element.animate(keyframes, { duration, easing, fill: 'forwards' })
+    try {
+      await animation.finished
+    } catch {
+      return
+    } finally {
+      animation.cancel()
+      if (!isModal) element.style.overflow = ''
+    }
+    if (!isModal && direction === 'enter') await new Promise((resolve) => window.setTimeout(resolve, 100))
+  }, [variant])
+
+  const transitionTo = useCallback((nextValue) => {
+    requestedRef.current = nextValue
+    if (runningRef.current || Object.is(nextValue, valueRef.current)) return
+    runningRef.current = true
+
+    const run = async () => {
+      while (mountedRef.current && !Object.is(requestedRef.current, valueRef.current)) {
+        await animateElement(resolveElementRef.current?.(), 'leave')
+        if (!mountedRef.current) break
+        const target = requestedRef.current
+        valueRef.current = target
+        flushSync(() => setValue(target))
+        await animateElement(resolveElementRef.current?.(), 'enter')
+      }
+      runningRef.current = false
+    }
+
+    void run()
+  }, [animateElement])
+
+  return [value, transitionTo]
+}
+
 function CryptoDeposit({ method, user }) {
   const currency = method[0]
   const detail = cryptoDetails[currency]
@@ -233,7 +302,8 @@ function CryptoWithdraw({ method }) {
 
 function RobuxDeposit({ user }) {
   const [amount, setAmount] = useState('100')
-  const [step, setStep] = useState('amount')
+  const stepContainerRef = useRef(null)
+  const [step, setStep] = useOutInState('amount', () => stepContainerRef.current?.querySelector('.deposit-step'))
   const [secondsLeft, setSecondsLeft] = useState(600)
   const numberAmount = Math.max(0, Math.floor(Number(amount.replace(/,/g, '')) || 0))
   const hasVerifiedRoblox = Boolean(user?.roblox_id || user?.robloxId)
@@ -252,7 +322,7 @@ function RobuxDeposit({ user }) {
   const unavailable = () => notify({ type: 'error', message: 'Robux deposits will be enabled when the cashier backend is connected.' })
   return <div className="modal-robux" {...robuxModalScope}><div className="robux-content" {...robuxModalScope}>
     <div className="robux-header" {...robuxModalScope}><div className="header-text-wrap" {...robuxModalScope}><div className="header-text" {...robuxModalScope}>Deposit Robux</div></div></div>
-    <div className="wallet-robux-deposit" {...robuxDepositScope}>
+    <div ref={stepContainerRef} className="wallet-robux-deposit" {...robuxDepositScope}>
       {step === 'amount' && <div className="deposit-step wallet-flow-step" {...robuxDepositScope}><div className="deposit-section" {...robuxDepositScope}><div className="section-title" {...robuxDepositScope}>Amount of Robux</div><div className="tip-input" {...robuxDepositScope}><img className="tip-icon" src="/Methods/rbx.62091f8a.png" alt="" {...robuxDepositScope} /><input className="tip-amount-display" type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^\d,]/g, ''))} onBlur={() => setAmount(formatInteger(amount))} {...robuxDepositScope} /><div className="tip-actions-buttons" {...robuxDepositScope}><button type="button" onClick={() => setAmount(formatInteger(Math.floor(numberAmount / 2)))} {...robuxDepositScope}>1/2</button><button type="button" onClick={() => setAmount(formatInteger(numberAmount * 2))} {...robuxDepositScope}>2x</button><button type="button" onClick={() => setAmount('10,000')} {...robuxDepositScope}>Max</button></div></div></div><div className="amount-inputs" {...robuxDepositScope}><div className="inputs-element" {...robuxDepositScope}><div className="element-content" {...robuxDepositScope}><img src="/rocoin.2d3febd5.svg" alt="" {...robuxDepositScope} /><input type="text" readOnly tabIndex="-1" value={formatInteger(numberAmount * 2)} {...robuxDepositScope} /></div></div><span className="equals" {...robuxDepositScope}>=</span><div className="inputs-element" {...robuxDepositScope}><div className="element-content" {...robuxDepositScope}><img src="/Methods/rbx.62091f8a.png" alt="" {...robuxDepositScope} /><input type="text" readOnly tabIndex="-1" value={formatInteger(numberAmount)} {...robuxDepositScope} /></div></div></div>{!hasVerifiedRoblox && <div className="deposit-meta" {...robuxDepositScope}><p className="error-message" {...robuxDepositScope}>Link and verify your Roblox account before depositing Robux.</p></div>}<button className="button-withdraw" type="button" disabled={!hasVerifiedRoblox || numberAmount < 7} onClick={startDeposit} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>Continue</div></div></button></div>}
       {step === 'checking' && <div className="deposit-step status-step wallet-flow-step" {...robuxDepositScope}><div className="status-icon checking" {...robuxDepositScope}><div className="status-spinner" {...robuxDepositScope} /></div><div className="status-title" {...robuxDepositScope}>Checking your purchase</div><p className="status-copy" {...robuxDepositScope}>Checking your purchase, please wait...</p></div>}
       {(step === 'purchase' || step === 'placeCheck') && <div className={`deposit-step session-panel wallet-flow-step${step === 'placeCheck' ? ' place-check' : ''}`} {...robuxDepositScope}>{step === 'purchase' ? <><div className="session-copy-block" {...robuxDepositScope}><div className="section-title" {...robuxDepositScope}>Purchase this gamepass to continue</div><p className="session-copy muted" {...robuxDepositScope}>Coins are credited automatically after the purchase is detected.</p></div><div className="expiry-notice" {...robuxDepositScope}><TimerIcon className="expiry-icon" {...robuxDepositScope} /><span {...robuxDepositScope}>Expires in: <strong {...robuxDepositScope}>{countdown}</strong></span></div><div className="warning-stack" {...robuxDepositScope}><div className="warning-box" {...robuxDepositScope}><WarningIcon className="warning-icon" {...robuxDepositScope} /><span {...robuxDepositScope}>If you have purchased the gamepass, <strong {...robuxDepositScope}>do not delete it</strong> until your coins are credited.</span></div><div className="warning-box" {...robuxDepositScope}><WarningIcon className="warning-icon" {...robuxDepositScope} /><span {...robuxDepositScope}>Only buy this gamepass with <strong {...robuxDepositScope}>{username}</strong>.</span></div></div><div className="pass-details" {...robuxDepositScope}><div className="pass-row" {...robuxDepositScope}><span className="pass-label" {...robuxDepositScope}>Gamepass</span><span className="pass-value" {...robuxDepositScope}>Deposit Gamepass</span></div><div className="pass-row" {...robuxDepositScope}><span className="pass-label" {...robuxDepositScope}>Price</span><span className="pass-value receive" {...robuxDepositScope}><img src="/Methods/rbx.62091f8a.png" alt="" {...robuxDepositScope} /> {formatInteger(numberAmount)}</span></div><div className="pass-row" {...robuxDepositScope}><span className="pass-label" {...robuxDepositScope}>You'll receive</span><span className="pass-value receive" {...robuxDepositScope}><img src="/rocoin.2d3febd5.svg" alt="" {...robuxDepositScope} /> {formatInteger(numberAmount * 2)}</span></div></div><button className="button-withdraw session-link" type="button" onClick={unavailable} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}><span {...robuxDepositScope}>Open Gamepass Page</span><ExternalIcon className="external-icon" {...robuxDepositScope} /></div></div></button><button className="button-outline" type="button" onClick={() => setStep('placeCheck')} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>I'm getting '404 | Page Not found'</div></div></button><div className="session-actions" {...robuxDepositScope}><button className="button-secondary" type="button" onClick={() => setStep('amount')} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>Cancel</div></div></button><button className="button-withdraw" type="button" onClick={unavailable} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>I've bought it</div></div></button></div></> : <><div className="session-copy-block" {...robuxDepositScope}><div className="section-title" {...robuxDepositScope}>Check the place page</div><p className="session-copy muted" {...robuxDepositScope}>Newly created gamepasses can briefly 404. Open the place URL and confirm you can play and see the gamepass under the Store tab.</p></div><div className="expiry-notice compact" {...robuxDepositScope}><TimerIcon className="expiry-icon" {...robuxDepositScope} /><span {...robuxDepositScope}>Expires in: <strong {...robuxDepositScope}>{countdown}</strong></span></div><div className="steps-card" {...robuxDepositScope}><div className="step-row" {...robuxDepositScope}><div className="step-num" {...robuxDepositScope}>1</div><div className="step-body" {...robuxDepositScope}><div className="step-title" {...robuxDepositScope}>Open the place URL</div><p className="step-text" {...robuxDepositScope}>Use the Roblox place page for this deposit, not the 404 gamepass page.</p><p className="step-text warn" {...robuxDepositScope}>Place URL unavailable — the cashier backend has not been connected.</p></div></div><div className="step-row" {...robuxDepositScope}><div className="step-num" {...robuxDepositScope}>2</div><div className="step-body" {...robuxDepositScope}><div className="step-title" {...robuxDepositScope}>Open the Store tab</div><p className="step-text" {...robuxDepositScope}>Find the deposit gamepass, then return here after purchasing it.</p></div></div></div><div className="session-actions place-actions" {...robuxDepositScope}><button className="button-secondary" type="button" onClick={() => setStep('purchase')} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>Back</div></div></button><button className="button-withdraw" type="button" onClick={unavailable} {...robuxDepositScope}><div className="button-inner" {...robuxDepositScope}><div className="inner-content" {...robuxDepositScope}>I've bought it</div></div></button></div></>}</div>}
@@ -262,7 +332,8 @@ function RobuxDeposit({ user }) {
 
 function LimitedsDeposit({ user }) {
   const [username, setUsername] = useState('')
-  const [step, setStep] = useState('scan')
+  const stepContainerRef = useRef(null)
+  const [step, setStep] = useOutInState('scan', () => stepContainerRef.current?.querySelector('.deposit-step'))
   const verify = () => {
     if (!username.trim()) return notify({ type: 'error', message: 'Please enter a Roblox username.' })
     setStep('checking')
@@ -273,7 +344,7 @@ function LimitedsDeposit({ user }) {
   const usernameEntry = <><p className="session-copy muted tip-copy" {...limitedDepositScope}>Tip: For the best experience, we recommend using a secondary or alt Roblox account dedicated to trading.</p><div className="deposit-section" {...limitedDepositScope}><div className="section-title" {...limitedDepositScope}>Roblox username</div><div className="verify-row" {...limitedDepositScope}><div className="tip-input" {...limitedDepositScope}><input className="username-input" type="text" autoComplete="off" maxLength="20" placeholder="Enter username" value={username} onChange={(event) => setUsername(event.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') verify() }} {...limitedDepositScope} /></div><button className="button-withdraw verify-btn" type="button" disabled={!username.trim()} onClick={verify} {...limitedDepositScope}><div className="button-inner" {...limitedDepositScope}><div className="inner-content" {...limitedDepositScope}>Verify</div></div></button></div></div></>
   return <div className="modal-limiteds" {...limitedModalScope}><div className="limiteds-content" {...limitedModalScope}>
     <div className="limiteds-header" {...limitedModalScope}><div className="header-text-wrap" {...limitedModalScope}><div className="header-text" {...limitedModalScope}>Deposit Limiteds</div></div></div>
-    <div className="wallet-limited-deposit" {...limitedDepositScope}>
+    <div ref={stepContainerRef} className="wallet-limited-deposit" {...limitedDepositScope}>
       {step === 'scan' && <div className="deposit-step wallet-flow-step" {...limitedDepositScope}>{usernameEntry}</div>}
       {step === 'checking' && <div className="deposit-step status-step wallet-flow-step" {...limitedDepositScope}><div className="status-icon checking" {...limitedDepositScope}><div className="status-spinner" {...limitedDepositScope} /></div><div className="status-title" {...limitedDepositScope}>Verifying account</div><p className="status-copy" {...limitedDepositScope}>Looking up this Roblox user, please wait...</p></div>}
       {step === 'confirm' && <div className="deposit-step wallet-flow-step" {...limitedDepositScope}>{usernameEntry}<div className="confirm-card" {...limitedDepositScope}><div className="confirm-label" {...limitedDepositScope}>Is this you?</div><div className="confirm-user" {...limitedDepositScope}><img className="confirm-avatar" src={avatar} alt={username} {...limitedDepositScope} /><div className="confirm-user-text" {...limitedDepositScope}><div className="confirm-display" {...limitedDepositScope}>{username}</div><div className="confirm-handle" {...limitedDepositScope}>@{username}</div></div></div></div><div className="requirements-card" {...limitedDepositScope}><div className="confirm-label" {...limitedDepositScope}>Requirements</div><div className="requirement-row ok" {...limitedDepositScope}><SuccessIcon className="requirement-icon" {...limitedDepositScope} /><span {...limitedDepositScope}>Inventory public</span></div><div className="requirement-row ok" {...limitedDepositScope}><SuccessIcon className="requirement-icon" {...limitedDepositScope} /><span {...limitedDepositScope}>Trades enabled</span></div></div>{button('Continue', { onClick: () => setStep('pick') })}</div>}
@@ -282,16 +353,89 @@ function LimitedsDeposit({ user }) {
   </div></div>
 }
 
-function RobuxWithdrawUnavailable() {
+function RobuxWithdraw({ user, onDone }) {
+  const availableCoins = Math.max(0, Math.floor(Number(user?.rocoins) || 0))
+  const minimumCoins = 14
+  const rate = 2
+  const [coinsRaw, setCoinsRaw] = useState(String(minimumCoins))
+  const [apiKeyRaw, setApiKeyRaw] = useState('')
+  const stageRef = useRef(null)
+  const [step, setStep] = useOutInState('amount', () => stageRef.current?.firstElementChild)
+  const coins = Math.max(0, Math.floor(Number(coinsRaw.replace(/,/g, '')) || 0))
+  const robux = Math.floor(coins / rate)
+  const afterTaxRobux = Math.floor(robux * 0.7)
+  const isVerified = Boolean(user?.roblox_id ?? user?.robloxId)
+  const canContinue = isVerified && robux >= 7 && coins <= availableCoins
+
+  const estimatedWait = useMemo(() => {
+    const hours = robux / 50
+    if (hours < 1) {
+      const minutes = Math.max(5, Math.ceil(hours * 60))
+      return minutes >= 60 ? '~1h' : `~${minutes}m`
+    }
+    const roundedHours = Math.ceil(hours)
+    if (roundedHours < 24) return `~${roundedHours}h`
+    const days = Math.floor(roundedHours / 24)
+    const remainingHours = roundedHours % 24
+    return remainingHours ? `~${days}d ${remainingHours}h` : `~${days}d`
+  }, [robux])
+
+  const updateCoins = (value) => setCoinsRaw(String(Math.max(minimumCoins, Math.min(availableCoins, Math.floor(value)))))
+  const submitPlaceholder = () => {
+    setApiKeyRaw('')
+    setStep('queued')
+  }
+  const button = (label, { className = 'button-withdraw', disabled = false, onClick, type = 'button' } = {}) => (
+    <button className={className} type={type} disabled={disabled} onClick={onClick} {...robuxWithdrawScope}><div className="button-inner" {...robuxWithdrawScope}><div className="inner-content" {...robuxWithdrawScope}>{label}</div></div></button>
+  )
+
   return <div className="modal-robux" {...robuxModalScope}><div className="robux-content" {...robuxModalScope}>
     <div className="robux-header" {...robuxModalScope}><div className="header-text-wrap" {...robuxModalScope}><div className="header-text" {...robuxModalScope}>Withdraw Robux</div></div></div>
-    <div className="wallet-robux-deposit" {...robuxDepositScope}><div className="deposit-step status-step wallet-flow-step" {...robuxDepositScope}><div className="status-title" {...robuxDepositScope}>Cashier unavailable</div><p className="status-copy" {...robuxDepositScope}>Robux withdrawals will be enabled when the cashier backend is connected.</p></div></div>
+    <div className="wallet-robux-withdraw" ref={stageRef} {...robuxWithdrawScope}>
+      {step === 'amount' && <div className="deposit-step wallet-flow-step" {...robuxWithdrawScope}>
+        <div className="amount-inputs convert-row" {...robuxWithdrawScope}>
+          <div className="deposit-section convert-side" {...robuxWithdrawScope}><div className="section-title" {...robuxWithdrawScope}>Amount of Coins</div><div className="tip-input" {...robuxWithdrawScope}><img className="tip-icon" src="/rocoin.2d3febd5.svg" alt="" {...robuxWithdrawScope} /><input className="tip-amount-display" type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={formatInteger(coinsRaw)} onChange={(event) => setCoinsRaw(event.target.value.replace(/\D/g, ''))} {...robuxWithdrawScope} /><div className="tip-actions-buttons" {...robuxWithdrawScope}><button type="button" onClick={() => updateCoins(Math.floor(coins / 2))} {...robuxWithdrawScope}>1/2</button><button type="button" onClick={() => updateCoins(coins * 2)} {...robuxWithdrawScope}>2x</button><button type="button" onClick={() => updateCoins(Math.floor(availableCoins / rate) * rate)} {...robuxWithdrawScope}>Max</button></div></div></div>
+          <span className="equals" {...robuxWithdrawScope}>=</span>
+          <div className="deposit-section convert-side" {...robuxWithdrawScope}><div className="section-title" {...robuxWithdrawScope}>Robux (before tax)</div><div className="tip-input tip-input-readonly" {...robuxWithdrawScope}><img className="tip-icon" src="/Methods/rbx.62091f8a.png" alt="" {...robuxWithdrawScope} /><input className="tip-amount-display" value={formatInteger(robux)} readOnly tabIndex={-1} {...robuxWithdrawScope} /></div><p className="session-copy muted tax-hint" {...robuxWithdrawScope}>After Roblox 30% tax you receive {formatInteger(afterTaxRobux)} R$</p></div>
+        </div>
+        {!isVerified && <div className="deposit-meta" {...robuxWithdrawScope}><p className="error-message" {...robuxWithdrawScope}>Link and verify your Roblox account before withdrawing Robux.</p></div>}
+        <div className="expiry-notice wait-notice" {...robuxWithdrawScope}><TimerIcon className="expiry-icon" {...robuxWithdrawScope} /><div className="wait-copy" {...robuxWithdrawScope}><span {...robuxWithdrawScope}>Estimated wait: <strong {...robuxWithdrawScope}>{estimatedWait}</strong></span><p {...robuxWithdrawScope}>Due to high demand, withdrawals are queued. RoRisk offers competitive rates. Your R$ will be delivered to your pending balance as players deposit.</p></div></div>
+        {button('Continue', { disabled: !canContinue, onClick: () => setStep('permissions') })}
+      </div>}
+
+      {step === 'permissions' && <div className="deposit-step session-panel wallet-flow-step" {...robuxWithdrawScope}>
+        <div className="session-copy-block" {...robuxWithdrawScope}><div className="section-title" {...robuxWithdrawScope}>Ensure publishing permissions</div><p className="session-copy muted" {...robuxWithdrawScope}>Before we continue, open Roblox publishing permissions and make sure every checkmark on that page is green.</p><p className="session-copy warn" {...robuxWithdrawScope}>Your withdrawal will not process properly and could be delayed if you do not follow the instructions.</p></div>
+        <div className="steps-card" {...robuxWithdrawScope}>
+          <div className="step-row" {...robuxWithdrawScope}><div className="step-num" {...robuxWithdrawScope}>1</div><div className="step-body" {...robuxWithdrawScope}><div className="step-title" {...robuxWithdrawScope}>Open Roblox publishing permissions</div><a className="button-withdraw step-action" href="https://create.roblox.com/settings/eligibility/publishing-permissions" target="_blank" rel="noopener noreferrer" {...robuxWithdrawScope}><div className="button-inner" {...robuxWithdrawScope}><div className="inner-content" {...robuxWithdrawScope}>Open Publishing Permissions <ExternalIcon className="external-icon" {...robuxWithdrawScope} /></div></div></a></div></div>
+          <div className="step-row" {...robuxWithdrawScope}><div className="step-num" {...robuxWithdrawScope}>2</div><div className="step-body" {...robuxWithdrawScope}><div className="step-title" {...robuxWithdrawScope}>Check every requirement</div><p className="step-text" {...robuxWithdrawScope}>All checkmarks must be green before you continue this withdrawal.</p></div></div>
+        </div>
+        <div className="session-actions place-actions" {...robuxWithdrawScope}>{button('Back', { className: 'button-secondary', onClick: () => setStep('amount') })}{button('I confirm', { onClick: () => setStep('apiKey') })}</div>
+      </div>}
+
+      {step === 'apiKey' && <div className="deposit-step session-panel wallet-flow-step" {...robuxWithdrawScope}>
+        <div className="session-copy-block" {...robuxWithdrawScope}><div className="section-title" {...robuxWithdrawScope}>Connect Your Roblox API Key</div><p className="session-copy muted" {...robuxWithdrawScope}>We need a Roblox API key to automatically create and manage gamepasses for withdrawals</p></div>
+        <div className="steps-card" {...robuxWithdrawScope}>
+          <div className="step-row" {...robuxWithdrawScope}><div className="step-num" {...robuxWithdrawScope}>1</div><div className="step-body" {...robuxWithdrawScope}><div className="step-title" {...robuxWithdrawScope}>Create a Roblox API Key</div><a className="button-withdraw step-action" href="https://create.roblox.com/dashboard/credentials" target="_blank" rel="noopener noreferrer" {...robuxWithdrawScope}><div className="button-inner" {...robuxWithdrawScope}><div className="inner-content" {...robuxWithdrawScope}>Go to Roblox Credentials Dashboard <ExternalIcon className="external-icon" {...robuxWithdrawScope} /></div></div></a></div></div>
+          <div className="step-row" {...robuxWithdrawScope}><div className="step-num" {...robuxWithdrawScope}>2</div><div className="step-body" {...robuxWithdrawScope}><div className="step-title" {...robuxWithdrawScope}>Configure the API Key</div><ul className="step-list" {...robuxWithdrawScope}><li {...robuxWithdrawScope}>Give it any name you'd like</li><li {...robuxWithdrawScope}>Under <strong {...robuxWithdrawScope}>Access Permissions</strong>, select <strong {...robuxWithdrawScope}>'game-passes'</strong></li><li {...robuxWithdrawScope}>Click <strong {...robuxWithdrawScope}>Select Operations to Add</strong>, add <strong {...robuxWithdrawScope}>'read'</strong> and <strong {...robuxWithdrawScope}>'write'</strong></li><li {...robuxWithdrawScope}>Leave all other settings as-is</li><li {...robuxWithdrawScope}>Click <strong {...robuxWithdrawScope}>'Save &amp; Generate key'</strong></li></ul></div></div>
+          <div className="step-row" {...robuxWithdrawScope}><div className="step-num" {...robuxWithdrawScope}>3</div><div className="step-body" {...robuxWithdrawScope}><div className="step-title" {...robuxWithdrawScope}>Copy the API Key</div><p className="step-text" {...robuxWithdrawScope}>Copy the generated key and paste it below</p></div></div>
+        </div>
+        <div className="deposit-section" {...robuxWithdrawScope}><div className="tip-input" {...robuxWithdrawScope}><input className="tip-amount-display" type="password" autoComplete="off" placeholder="Paste your Roblox API Key here..." value={apiKeyRaw} onChange={(event) => setApiKeyRaw(event.target.value)} {...robuxWithdrawScope} /></div><p className="session-copy muted" {...robuxWithdrawScope}>Placeholder only: your API key is never sent or stored.</p></div>
+        <div className="session-actions place-actions" {...robuxWithdrawScope}>{button('Back', { className: 'button-secondary', onClick: () => setStep('permissions') })}{button('Save & Continue →', { disabled: apiKeyRaw.trim().length < 20, onClick: submitPlaceholder })}</div>
+      </div>}
+
+      {step === 'queued' && <div className="deposit-step status-step wallet-flow-step" {...robuxWithdrawScope}>
+        <div className="status-icon queued" {...robuxWithdrawScope}><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#52a4ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...robuxWithdrawScope}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></div>
+        <div className="status-title" {...robuxWithdrawScope}>Withdrawal queued</div><p className="status-copy" {...robuxWithdrawScope}>Your withdrawal of {formatInteger(robux)} R$ ({formatInteger(coins)} RoCoins) is in the queue.</p>
+        <div className="expiry-notice compact" {...robuxWithdrawScope}><TimerIcon className="expiry-icon" {...robuxWithdrawScope} /><span {...robuxWithdrawScope}>Estimated wait: <strong {...robuxWithdrawScope}>{estimatedWait}</strong></span></div>
+        <div className="session-actions place-actions status-actions" {...robuxWithdrawScope}>{button('Cancel', { className: 'button-secondary', onClick: () => setStep('amount') })}{button('Done', { onClick: onDone })}</div>
+      </div>}
+    </div>
   </div></div>
 }
 
 function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
   const [tab, setTab] = useState(initialTab)
-  const [method, setMethod] = useState(null)
+  const [method, setMethod] = useOutInState(null, () => document.querySelector('.modal-content-host')?.firstElementChild, 'modal')
   const [conversion, setConversion] = useState('rocoins')
   const methods = useMemo(() => cryptoMethods[tab] || [], [tab])
   const chooseTab = (next) => { setMethod(null); setTab(next) }
@@ -307,7 +451,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
     }
     closeButton.addEventListener('click', returnToCashier, true)
     return () => closeButton.removeEventListener('click', returnToCashier, true)
-  }, [method])
+  }, [method, setMethod])
 
   const openMarket = () => {
     onRequestClose?.()
@@ -317,7 +461,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
     }, 200)
   }
 
-  if (method === 'robux') return tab === 'deposit' ? <RobuxDeposit user={user} /> : <RobuxWithdrawUnavailable />
+  if (method === 'robux') return tab === 'deposit' ? <RobuxDeposit user={user} /> : <RobuxWithdraw user={user} onDone={onRequestClose} />
   if (method === 'limiteds') return <LimitedsDeposit user={user} />
   if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} user={user} /> : <CryptoWithdraw method={method} />
 

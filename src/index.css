@@ -16,6 +16,7 @@
   padding: 0;
   overflow: hidden;
 }
+
 .app.fade-in[data-v-b6856792] {
   opacity: 1;
 }
@@ -21524,6 +21525,34 @@ p[data-v-6353188e] {
   .rewards[data-v-34ad1ed0] {
     padding: 3vh;
     gap: 30px;
+  }
+}
+
+.placeholder-qr {
+  width: 140px;
+  height: 140px;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.cashier-crypto-withdraw .element-content .usd-icon img[data-v-060d18fa] {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wallet-flow-step {
+  animation: wallet-flow-step-in .4s cubic-bezier(.22,1,.36,1) both;
+}
+
+@keyframes wallet-flow-step-in {
+  0% {
+    opacity: 0;
+    transform: translateY(80px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

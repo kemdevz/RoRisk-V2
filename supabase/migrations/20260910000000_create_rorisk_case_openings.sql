@@ -1,7 +1,9 @@
 create table if not exists public.rorisk_case_openings (
   uuid uuid primary key default gen_random_uuid(),
-  request_id uuid not null unique,
   user_uuid uuid not null references public.rorisk_users(uuid) on delete cascade,
+  roblox_id bigint,
+  username text not null,
+  avatar_headshot text not null default '/default-avatar.png',
   case_uuid uuid not null references public.rorisk_cases(uuid) on delete restrict,
   case_id text not null,
   case_name text not null,
@@ -16,7 +18,6 @@ create table if not exists public.rorisk_case_openings (
   server_seed text not null,
   nonce bigint not null check (nonce >= 0),
   status text not null default 'completed' check (status in ('pending', 'completed', 'cancelled', 'refunded')),
-  demo boolean not null default false,
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
@@ -36,7 +37,6 @@ create or replace function public.open_rorisk_case(
   p_user_uuid uuid,
   p_case_id text,
   p_case_count integer,
-  p_request_id uuid,
   p_client_seed text,
   p_server_seed text,
   p_server_seed_hash text
@@ -49,7 +49,6 @@ declare
   v_case public.rorisk_cases%rowtype;
   v_user public.rorisk_users%rowtype;
   v_opening public.rorisk_case_openings%rowtype;
-  v_existing public.rorisk_case_openings%rowtype;
   v_items jsonb;
   v_item jsonb;
   v_selected jsonb;
@@ -69,15 +68,6 @@ begin
 
   if encode(digest(p_server_seed, 'sha256'), 'hex') <> p_server_seed_hash then
     raise exception 'The case seed is invalid.';
-  end if;
-
-  select * into v_existing
-  from public.rorisk_case_openings
-  where request_id = p_request_id and user_uuid = p_user_uuid;
-
-  if found then
-    select * into v_user from public.rorisk_users where uuid = p_user_uuid;
-    return jsonb_build_object('opening', to_jsonb(v_existing), 'user', to_jsonb(v_user));
   end if;
 
   select * into v_user
@@ -104,7 +94,7 @@ begin
 
   v_wager := v_case.rocoin_amount * p_case_count;
   if coalesce(v_user.rocoins, 0) < v_wager then
-    raise exception 'You do not have enough RoCoins.';
+    raise exception 'Insufficient balance.';
   end if;
 
   select coalesce(max(nonce + case_count), 0) into v_nonce
@@ -143,18 +133,18 @@ begin
   returning * into v_user;
 
   insert into public.rorisk_case_openings (
-    request_id, user_uuid, case_uuid, case_id, case_name, currency,
+    user_uuid, roblox_id, username, avatar_headshot, case_uuid, case_id, case_name, currency,
     case_count, wager_amount, payout_amount, outcomes, client_seed,
-    server_seed_hash, server_seed, nonce, status, demo, completed_at
+    server_seed_hash, server_seed, nonce, status, completed_at
   ) values (
-    p_request_id, p_user_uuid, v_case.uuid, v_case.case_id, v_case.name, 'rocoins',
+    p_user_uuid, v_user.roblox_id, v_user.username, v_user.avatar_headshot, v_case.uuid, v_case.case_id, v_case.name, 'rocoins',
     p_case_count, v_wager, v_payout, v_outcomes, p_client_seed,
-    p_server_seed_hash, p_server_seed, v_nonce, 'completed', false, now()
+    p_server_seed_hash, p_server_seed, v_nonce, 'completed', now()
   ) returning * into v_opening;
 
   return jsonb_build_object('opening', to_jsonb(v_opening), 'user', to_jsonb(v_user));
 end;
 $$;
 
-revoke all on function public.open_rorisk_case(uuid, text, integer, uuid, text, text, text) from public, anon, authenticated;
-grant execute on function public.open_rorisk_case(uuid, text, integer, uuid, text, text, text) to service_role;
+revoke all on function public.open_rorisk_case(uuid, text, integer, text, text, text) from public, anon, authenticated;
+grant execute on function public.open_rorisk_case(uuid, text, integer, text, text, text) to service_role;

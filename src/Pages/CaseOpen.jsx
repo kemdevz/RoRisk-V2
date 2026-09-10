@@ -443,7 +443,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
     clearTimers()
     setRunning(true)
     setWinnerVisible(false)
-    const openingId = opening.uuid || opening._id || opening.request_id || Date.now()
+    const openingId = opening.uuid || opening._id || Date.now()
     const reelSeed = `${openingId}${outcomes[0]?.outcome ?? ''}`
     setReels(outcomes.map((outcome, index) => createReel(
       caseData.items,
@@ -515,7 +515,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/open`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, demo, requestId: crypto.randomUUID(), clientSeed: getFairClientSeed(user) }),
+        body: JSON.stringify({ count, demo, clientSeed: getFairClientSeed(user) }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to open this case.')

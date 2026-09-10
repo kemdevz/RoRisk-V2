@@ -1,3 +1,6 @@
+alter table public.rorisk_slots add column if not exists demo_support boolean not null default false;
+alter table public.rorisk_live_games add column if not exists demo_support boolean not null default false;
+
 insert into public.rorisk_slots (game_code, game_name, provider, provider_code, image_url, launch_count, popular_rank, newest_rank, demo_support, active)
 values
 ('vs20fruitsw', 'Sweet Bonanza', 'Pragmatic Play', 'PRAGMATIC', '/api/casino-images/slots/vs20fruitsw.jpg', 131, 0, null, false, true),

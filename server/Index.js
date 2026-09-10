@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { attachRealtimeServer, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000
@@ -338,7 +338,7 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/casino-images/')) {
       const objectPath = decodeURIComponent(url.pathname.slice('/api/casino-images/'.length))
-      if (!/^(slots|live-casino)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
+      if (!/^(slots|live-casino|dice)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
         sendJson(response, 404, { error: 'Casino image not found.' })
         return true
       }
@@ -360,6 +360,46 @@ async function handleRequest(request, response, env) {
         slots: (slots || []).map(publicCasinoGame),
         live: (live || []).map(publicCasinoGame),
       })
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/dice/games') {
+      const query = new URLSearchParams({
+        select: 'uuid,username,avatar_headshot,currency,bet_amount,mode,target_low,target_high,roll,win_chance,multiplier,won,payout_amount,created_at',
+        order: 'created_at.desc',
+        limit: String(Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))),
+      })
+      const games = await supabaseRequest(env, `/rest/v1/rorisk_dice_games?${query}`)
+      sendJson(response, 200, { games: games || [] })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/dice/play') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      const targetLow = Math.trunc(Number(body.targetLow))
+      const targetHigh = Math.trunc(Number(body.targetHigh))
+      if (!Number.isSafeInteger(amount) || !Number.isInteger(targetLow) || !Number.isInteger(targetHigh)) throw new Error('The dice game request is invalid.')
+      const serverSeed = randomBytes(32).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/play_rorisk_dice', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: String(body.currency || ''),
+          p_mode: String(body.mode || ''),
+          p_target_low: targetLow,
+          p_target_high: targetHigh,
+          p_client_seed: String(body.clientSeed || sessionUser.uuid).slice(0, 128),
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      sendJson(response, 200, result)
       return true
     }
 
@@ -414,7 +454,6 @@ async function handleRequest(request, response, env) {
 
       const sessionUser = requestSessionUser(request, env)
       if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
-      const requestId = /^[0-9a-f-]{36}$/i.test(String(body.requestId || '')) ? body.requestId : randomUUID()
       const clientSeed = String(body.clientSeed || sessionUser.uuid).slice(0, 128)
       const serverSeed = randomBytes(32).toString('hex')
       const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
@@ -424,7 +463,6 @@ async function handleRequest(request, response, env) {
           p_user_uuid: sessionUser.uuid,
           p_case_id: caseData.caseId,
           p_case_count: count,
-          p_request_id: requestId,
           p_client_seed: clientSeed,
           p_server_seed: serverSeed,
           p_server_seed_hash: serverSeedHash,
@@ -560,10 +598,13 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const caseServiceRoute = /^\/api\/cases(?:\/|$)/.test(url.pathname)
-    sendJson(response, caseServiceRoute && containsInternalConfiguration ? 503 : 400, {
-      error: containsInternalConfiguration
-        || (caseServiceRoute && /could not find the function|schema cache|database/i.test(message))
+    const gameServiceRoute = /^\/api\/(?:cases|dice)(?:\/|$)/.test(url.pathname)
+    const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
+    sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
+      error: insufficientGameBalance
+        ? 'Insufficient balance.'
+        : containsInternalConfiguration
+        || (gameServiceRoute && /could not find the function|schema cache|database|relation .* does not exist/i.test(message))
         ? 'This service is temporarily unavailable. Please try again later.'
         : message,
     })

@@ -144,6 +144,7 @@ function NavbarCashier({ user, onOpenWallet }) {
   const selectCurrency = () => {
     window.localStorage.setItem('currency', alternateCurrency)
     setCurrency(alternateCurrency)
+    window.dispatchEvent(new CustomEvent('rorisk:currency-change', { detail: { currency: alternateCurrency } }))
     closeDropdown()
   }
 

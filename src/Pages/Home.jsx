@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import SiteIcon from '../components/Icons'
+import Bets from '../components/Bets'
 import { casinoImageUrl, loadCasinoCatalog } from '../lib/CasinoCatalog'
 
 const banners = [
@@ -573,28 +574,6 @@ function HomeMethods() {
             </div>
           </div>
         ))}
-      </div>
-    </div>
-  )
-}
-
-function Bets() {
-  const [tab, setTab] = useState('all')
-  return (
-    <div className="bets" data-v-3dfc5cda="" data-v-30c4bf74="">
-      <div className="bets-header" data-v-3dfc5cda="">
-        <h2 className="title" data-v-3dfc5cda=""><SiteIcon name="bets" data-v-3dfc5cda="" /> Live Bets</h2>
-        <div className="bets-buttons" data-v-3dfc5cda="">
-          {[['all', 'All Bets'], ['big-wins', 'High Rollers'], ['lucky-wins', 'Lucky Wins']].map(([key, label]) => (
-            <button key={key} className={`button${tab === key ? ' button-active' : ''}`} onClick={() => setTab(key)} data-v-3dfc5cda="">{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="bets-list" data-v-3dfc5cda="">
-        <div className="list-head" data-v-3dfc5cda="">
-          <div className="head-game" data-v-3dfc5cda="">Gamemode</div><div className="head-user" data-v-3dfc5cda="">Player</div><div className="head-time" data-v-3dfc5cda="">Time</div><div className="head-amount" data-v-3dfc5cda="">Bet</div><div className="head-multiplier" data-v-3dfc5cda="">Multiplier</div><div className="head-payout" data-v-3dfc5cda="">Payout</div>
-        </div>
-        <div className="list-content" data-v-3dfc5cda=""><div className="content-empty" data-v-3dfc5cda="">No active bets.</div></div>
       </div>
     </div>
   )

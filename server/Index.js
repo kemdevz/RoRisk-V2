@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
-import { attachRealtimeServer, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
+import { attachRealtimeServer, broadcastRealtime, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000
 const MAX_BODY_BYTES = 64 * 1024
@@ -250,6 +250,77 @@ function publicCasinoGame(row) {
   }
 }
 
+const COINFLIP_GAME_SELECT = '*,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(rank,level),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(rank,level),winner_profile:rorisk_users!rorisk_coinflip_games_winner_uuid_fkey(rank,level)'
+
+function publicCoinflipGame(row) {
+  const player = (prefix) => {
+    const uuid = row[`${prefix}_uuid`]
+    if (!uuid) return null
+    const profile = row[`${prefix}_profile`] || {}
+    return {
+      _id: uuid,
+      uuid,
+      roblox_id: row[`${prefix}_roblox_id`],
+      username: row[`${prefix}_username`],
+      avatar: row[`${prefix}_avatar_headshot`],
+      avatar_headshot: row[`${prefix}_avatar_headshot`],
+      rank: profile.rank || 'user',
+      level: Number(profile.level) || 0,
+    }
+  }
+  const creatorUser = player('creator')
+  const opponentUser = player('opponent')
+  const creator = { coin: row.creator_coin, bot: false, joinedAt: row.created_at, user: creatorUser }
+  const opponent = row.opponent_is_bot || opponentUser
+    ? { coin: row.opponent_coin, bot: row.opponent_is_bot === true, joinedAt: row.opponent_joined_at, ...(opponentUser ? { user: opponentUser } : {}) }
+    : null
+  const startedAt = row.started_at ? new Date(row.started_at).getTime() : null
+  const elapsed = startedAt == null ? null : Date.now() - startedAt
+  const state = row.state === 'created'
+    ? 'created'
+    : row.state === 'completed' && elapsed != null && elapsed < 3000
+      ? 'countdown'
+      : row.state === 'completed' && elapsed != null && elapsed < 5500
+        ? 'in_progress'
+        : row.state
+  const winner = row.winner_is_bot ? { bot: true } : player('winner')
+  const ticket = row.winning_coin && row.server_seed
+    ? Number.parseInt(createHash('sha256').update(`${row.server_seed}:${row.client_seed}:${row.nonce}`).digest('hex').slice(0, 8), 16)
+    : null
+  return {
+    _id: row.uuid,
+    uuid: row.uuid,
+    gameId: row.game_id,
+    creatorUuid: row.creator_uuid,
+    currency: row.currency,
+    amount: Number(row.amount) || 0,
+    creator,
+    opponent,
+    state,
+    winningCoin: row.winning_coin,
+    winner,
+    payoutAmount: Number(row.payout_amount) || 0,
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    updatedAt: row.updated_at,
+    fair: {
+      clientSeed: row.client_seed,
+      serverSeedHash: row.server_seed_hash,
+      serverSeed: state === 'completed' ? row.server_seed : null,
+      nonce: Number(row.nonce) || 0,
+      ticket,
+    },
+  }
+}
+
+async function coinflipGameByUuid(env, uuid) {
+  const query = new URLSearchParams({ uuid: `eq.${uuid}`, select: COINFLIP_GAME_SELECT, limit: '1' })
+  const rows = await supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${query}`)
+  if (!rows?.[0]) throw new Error('This coinflip game could not be found.')
+  return rows[0]
+}
+
 function demoCaseOutcomes(caseData, count) {
   const items = Array.isArray(caseData.items) ? caseData.items : []
   if (!items.length) throw new Error('This case has no available items.')
@@ -338,7 +409,7 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/casino-images/')) {
       const objectPath = decodeURIComponent(url.pathname.slice('/api/casino-images/'.length))
-      if (!/^(slots|live-casino|dice)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
+      if (!/^(slots|live-casino|dice|coinflip)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
         sendJson(response, 404, { error: 'Casino image not found.' })
         return true
       }
@@ -365,12 +436,36 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname === '/api/dice/games') {
       const query = new URLSearchParams({
-        select: 'uuid,username,avatar_headshot,currency,bet_amount,mode,target_low,target_high,roll,win_chance,multiplier,won,payout_amount,created_at',
+        select: 'uuid,username,avatar_headshot,currency,bet_amount,mode,target_low,target_high,roll,win_chance,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level)',
         order: 'created_at.desc',
         limit: String(Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))),
       })
       const games = await supabaseRequest(env, `/rest/v1/rorisk_dice_games?${query}`)
-      sendJson(response, 200, { games: games || [] })
+      sendJson(response, 200, { games: (games || []).map(({ profile, ...game }) => ({ ...game, level: Number(profile?.level) || 0 })) })
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/bets') {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+      const [diceResult, casesResult, coinflipResult] = await Promise.allSettled([
+        supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ status: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,wager_amount,payout_amount,created_at,profile:rorisk_users!rorisk_case_openings_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,creator_uuid,creator_roblox_id,creator_username,creator_avatar_headshot,opponent_uuid,opponent_roblox_id,opponent_username,opponent_avatar_headshot,currency,amount,winner_uuid,payout_amount,completed_at,created_at,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(level,rank),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
+      ])
+      const diceGames = diceResult.status === 'fulfilled' ? diceResult.value : []
+      const caseGames = casesResult.status === 'fulfilled' ? casesResult.value : []
+      const coinflipGames = coinflipResult.status === 'fulfilled' ? coinflipResult.value : []
+      const bets = [
+        ...diceGames.map(({ profile, ...game }) => ({ ...game, method: 'dice', level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
+        ...caseGames.map(({ profile, wager_amount: betAmount, ...game }) => ({ ...game, method: 'cases', bet_amount: betAmount, multiplier: betAmount > 0 ? Number(game.payout_amount) / Number(betAmount) : 0, won: Number(game.payout_amount) >= Number(betAmount), level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
+        ...coinflipGames.flatMap((game) => {
+          const completedAt = game.completed_at || game.created_at
+          const creator = { uuid: `${game.uuid}:creator`, user_uuid: game.creator_uuid, roblox_id: game.creator_roblox_id, username: game.creator_username, avatar_headshot: game.creator_avatar_headshot, currency: game.currency, bet_amount: game.amount, payout_amount: game.winner_uuid === game.creator_uuid ? game.payout_amount : 0, multiplier: game.winner_uuid === game.creator_uuid ? Number(game.payout_amount) / Number(game.amount) : 0, won: game.winner_uuid === game.creator_uuid, method: 'coinflip', level: Number(game.creator_profile?.level) || 0, rank: game.creator_profile?.rank || 'user', created_at: completedAt, updated_at: completedAt }
+          if (!game.opponent_uuid) return [creator]
+          return [creator, { uuid: `${game.uuid}:opponent`, user_uuid: game.opponent_uuid, roblox_id: game.opponent_roblox_id, username: game.opponent_username, avatar_headshot: game.opponent_avatar_headshot, currency: game.currency, bet_amount: game.amount, payout_amount: game.winner_uuid === game.opponent_uuid ? game.payout_amount : 0, multiplier: game.winner_uuid === game.opponent_uuid ? Number(game.payout_amount) / Number(game.amount) : 0, won: game.winner_uuid === game.opponent_uuid, method: 'coinflip', level: Number(game.opponent_profile?.level) || 0, rank: game.opponent_profile?.rank || 'user', created_at: completedAt, updated_at: completedAt }]
+        }),
+      ].sort((first, second) => new Date(second.updated_at).getTime() - new Date(first.updated_at).getTime()).slice(0, limit)
+      sendJson(response, 200, { games: bets })
       return true
     }
 
@@ -399,7 +494,87 @@ async function handleRequest(request, response, env) {
         }),
       })
       if (result?.user) startRealtimeSession(request, response, env, result.user)
+      if (result?.game) result.game.level = Number(result.user?.level) || 0
+      if (result?.game) broadcastRealtime({ type: 'diceBet', game: result.game })
       sendJson(response, 200, result)
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/coinflip/games') {
+      const query = new URLSearchParams({
+        state: 'in.(created,completed)',
+        select: COINFLIP_GAME_SELECT,
+        order: 'created_at.desc',
+        limit: String(Math.min(500, Math.max(25, Number(url.searchParams.get('limit')) || 200))),
+      })
+      const games = await supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${query}`)
+      const mappedGames = (games || []).map(publicCoinflipGame)
+      sendJson(response, 200, {
+        games: [
+          ...mappedGames.filter((game) => game.state !== 'completed'),
+          ...mappedGames.filter((game) => game.state === 'completed').slice(0, 25),
+        ],
+      })
+      return true
+    }
+
+    const coinflipGameRoute = url.pathname.match(/^\/api\/coinflip\/games\/([a-zA-Z0-9-]+)$/)
+    if (request.method === 'GET' && coinflipGameRoute) {
+      const identifier = coinflipGameRoute[1]
+      const query = new URLSearchParams({
+        [identifier.includes('-') ? 'uuid' : 'game_id']: `eq.${identifier}`,
+        select: COINFLIP_GAME_SELECT,
+        limit: '1',
+      })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${query}`)
+      if (!rows?.[0]) throw new Error('This coinflip game could not be found.')
+      sendJson(response, 200, { game: publicCoinflipGame(rows[0]) })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/coinflip/games') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      if (!Number.isSafeInteger(amount)) throw new Error('Your entered bet amount is invalid.')
+      const serverSeed = randomBytes(32).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/create_rorisk_coinflip', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: String(body.currency || ''),
+          p_coin: String(body.coin || ''),
+          p_client_seed: String(body.clientSeed || sessionUser.uuid).slice(0, 128),
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicCoinflipGame(await coinflipGameByUuid(env, result.game.uuid))
+      broadcastRealtime({ type: 'coinflip', game })
+      sendJson(response, 200, { ...result, game })
+      return true
+    }
+
+    const coinflipActionRoute = url.pathname.match(/^\/api\/coinflip\/games\/([a-fA-F0-9-]+)\/(join|bot)$/)
+    if (request.method === 'POST' && coinflipActionRoute) {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/join_rorisk_coinflip', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_game_uuid: coinflipActionRoute[1],
+          p_user_uuid: sessionUser.uuid,
+          p_bot: coinflipActionRoute[2] === 'bot',
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicCoinflipGame(await coinflipGameByUuid(env, result.game.uuid))
+      broadcastRealtime({ type: 'coinflip', game })
+      sendJson(response, 200, { ...result, game })
       return true
     }
 
@@ -598,7 +773,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:cases|dice)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance

@@ -7,6 +7,11 @@ const ROOMS = new Set(['en', 'tr', 'es', 'ru', 'de'])
 const MAX_MESSAGE_LENGTH = 300
 const HISTORY_LIMIT = 50
 const SERVER_KEY = Symbol.for('rorisk.realtime.server')
+let sendRealtimeEvent = null
+
+export function broadcastRealtime(payload) {
+  sendRealtimeEvent?.(payload)
+}
 
 function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => {
@@ -142,6 +147,7 @@ export function attachRealtimeServer(httpServer, signValue, env = {}) {
       if (!room || client.room === room) safeSend(client, payload)
     }
   }
+  sendRealtimeEvent = (payload) => broadcast(payload)
 
   const broadcastPresence = () => broadcast({ type: 'presence', counts: presence() })
 

@@ -17662,32 +17662,6 @@ button.slide-history-element[data-v-31fcee4a]:active {
   -o-object-fit: contain;
   object-fit: contain;
 }
-.coinflip-games-element-center-winner-coin-loading[data-v-3810525d] {
-  width: 45px;
-  height: 45px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.coinflip-games-element-center-winner-coin-loading .spinner[data-v-3810525d] {
-  width: 30px;
-  height: 30px;
-  border: 2px solid #4a6a81;
-  border-top: 2px solid #fff;
-  border-radius: 50%;
-  animation: spin-3810525d 1s linear infinite;
-}
-@keyframes spin-3810525d {
-  0% {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(1turn);
-  }
-}
 .coinflip-games-element-right-buttons[data-v-3810525d] {
   display: flex;
   flex-direction: row;
@@ -21526,6 +21500,9 @@ p[data-v-6353188e] {
     padding: 3vh;
     gap: 30px;
   }
+}
+.bets-element .element-user .box-level[data-v-ff759fba] {
+  flex-shrink: 0;
 }
 
 .placeholder-qr {

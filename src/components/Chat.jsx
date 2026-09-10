@@ -264,6 +264,8 @@ function Chat({ onToggle, user }) {
           setRain(payload.rain)
           setShowRainTip(false)
         }
+        if (payload.type === 'coinflip' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:coinflip-update', { detail: { game: payload.game } }))
+        if (payload.type === 'diceBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:dice-bet', { detail: { game: payload.game } }))
         if ((payload.type === 'userUpdate' || payload.type === 'userPublicUpdate') && payload.user) {
           if (payload.type === 'userUpdate') window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: payload.user } }))
           setMessages((current) => current.map((message) => {

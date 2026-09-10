@@ -82,6 +82,7 @@ const profile = [
 
 function SidebarSection({ title, items, showLabels, pathname, onAction }) {
   const [open, setOpen] = useState(true)
+  const isActive = (href) => pathname === href || (href === '/cases' && pathname.startsWith('/cases/'))
   return (
     <section className="sidebar-content" data-v-4fc2a52c="">
       {showLabels && (
@@ -104,7 +105,7 @@ function SidebarSection({ title, items, showLabels, pathname, onAction }) {
               {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
             </button>
             ) : (
-              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}${href === '/race' ? ' race' : ''}${pathname === href ? ' router-link-active' : ''}`} href={href} aria-current={pathname === href ? 'page' : undefined} key={label} data-v-4fc2a52c="">
+              <a className={`sidebar-item${icon === 'rewards' ? ' rewards' : ''}${href === '/race' ? ' race' : ''}${isActive(href) ? ' router-link-active' : ''}`} href={href} aria-current={isActive(href) ? 'page' : undefined} key={label} data-v-4fc2a52c="">
                 <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
                 {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
               </a>

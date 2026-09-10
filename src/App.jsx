@@ -16,6 +16,8 @@ import Rewards from './Pages/Rewards'
 import Market from './Pages/Market'
 import Affiliates from './Pages/Affiliates'
 import Race from './Pages/Race'
+import Cases from './Pages/Cases'
+import CaseOpen from './Pages/CaseOpen'
 import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 
@@ -99,7 +101,7 @@ function App() {
       if (!anchor || anchor.target || anchor.hasAttribute('download')) return
 
       const url = new URL(anchor.href, window.location.href)
-      if (url.origin !== window.location.origin || !['/', '/rewards', '/market', '/affiliates', '/race'].includes(url.pathname)) return
+      if (url.origin !== window.location.origin || !(/^\/cases\/[a-zA-Z0-9_-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases'].includes(url.pathname))) return
 
       event.preventDefault()
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return
@@ -183,8 +185,9 @@ function App() {
 
   if (loaderPhase !== 'done') return <LoadingScreen leaving={loaderPhase === 'leaving'} />
 
-  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race }
-  const Page = pages[displayedPath] || Home
+  const caseMatch = displayedPath.match(/^\/cases\/([a-zA-Z0-9_-]+)$/)
+  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases }
+  const Page = caseMatch ? CaseOpen : pages[displayedPath] || Home
   const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
   const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }
   const openStatistics = () => { setSiteModalClosing(false); setSiteModal({ type: 'statistics' }) }
@@ -213,7 +216,7 @@ function App() {
         >
           <div className="content-wrapper">
             <div className={routeClass}>
-              <Page user={user} onSignIn={() => setAuthModal('login')} />
+              <Page key={displayedPath} user={user} caseId={caseMatch?.[1]} onSignIn={() => setAuthModal('login')} />
             </div>
           </div>
           <Footer />

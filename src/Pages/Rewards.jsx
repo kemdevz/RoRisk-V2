@@ -10,10 +10,10 @@ const faucetScope = { 'data-v-30d11958': '' }
 const discordScope = { 'data-v-74315b22': '' }
 
 const welcomeCases = [
-  { theme: 'green', image: '/Rewards/rewards-1.9ed855d4.png' },
-  { theme: 'gold', image: '/Rewards/rewards-2.b63f641e.png' },
-  { theme: 'blue', image: '/Rewards/rewards-3.28db6e1a.png' },
-  { theme: 'rose', image: '/Rewards/rewards-4.cb91ae7f.png' },
+  { theme: 'green', image: '/api/case-images/other/rewards-1.png' },
+  { theme: 'gold', image: '/api/case-images/other/rewards-2.png' },
+  { theme: 'blue', image: '/api/case-images/other/rewards-3.png' },
+  { theme: 'rose', image: '/api/case-images/other/rewards-4.png' },
 ]
 
 const rakebackItems = [
@@ -24,17 +24,17 @@ const rakebackItems = [
 ]
 
 const dailyCases = [
-  [5, 'silver', 'daily-level-5.d3bb2159.png'],
-  [10, 'blue', 'daily-level-10.4d4888c8.png'],
-  [20, 'violet', 'daily-level-20.ae0db76a.png'],
-  [30, 'rose', 'daily-level-30.082276ef.png'],
-  [40, 'green', 'daily-level-40.ede3293e.png'],
-  [50, 'orange', 'daily-level-50.1bee91bc.png'],
-  [60, 'amber', 'daily-level-60.4e68734a.png'],
-  [70, 'indigo', 'daily-level-70.e55d0786.png'],
-  [80, 'cyan', 'daily-level-80.3182bd66.png'],
-  [90, 'crimson', 'daily-level-90.f331c16e.png'],
-  [100, 'platinum', 'daily-level-100.e5bbe44d.png'],
+  [5, 'silver', '/api/case-images/other/daily-level-5.png'],
+  [10, 'blue', '/api/case-images/other/daily-level-10.png'],
+  [20, 'violet', '/api/case-images/other/daily-level-20.png'],
+  [30, 'rose', '/api/case-images/other/daily-level-30.png'],
+  [40, 'green', '/api/case-images/other/daily-level-40.png'],
+  [50, 'orange', '/api/case-images/other/daily-level-50.png'],
+  [60, 'amber', '/api/case-images/other/daily-level-60.png'],
+  [70, 'indigo', '/api/case-images/other/daily-level-70.png'],
+  [80, 'cyan', '/api/case-images/other/daily-level-80.png'],
+  [90, 'crimson', '/api/case-images/other/daily-level-90.png'],
+  [100, 'platinum', '/api/case-images/other/daily-level-100.png'],
 ]
 
 function RewardsHero({ onSignIn }) {
@@ -123,7 +123,7 @@ function RewardsDailyCases() {
       <div className="daily-cases-grid" {...dailyScope}>
         {dailyCases.map(([level, theme, image]) => (
           <div className={`daily-case-card daily-case-card--${theme} daily-case-card--locked`} key={level} {...dailyScope}>
-            <div className="daily-case-image-wrap" {...dailyScope}><img src={`/Rewards/${image}`} alt={`Level ${level} case`} {...dailyScope} /></div>
+            <div className="daily-case-image-wrap" {...dailyScope}><img src={image} alt={`Level ${level} case`} {...dailyScope} /></div>
             <div className="daily-case-level" {...dailyScope}>Level {level}</div>
             <div className="daily-case-action daily-case-action--locked" {...dailyScope}>
               <img className="locked-icon" src="/Rewards/locked.8cc650fb.svg" alt="" {...dailyScope} /><span {...dailyScope}>Case locked</span>

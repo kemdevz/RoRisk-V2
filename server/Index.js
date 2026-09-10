@@ -1,5 +1,5 @@
-import { createHmac, randomInt, timingSafeEqual } from 'node:crypto'
-import { attachRealtimeServer, clearRealtimeSessionCookie, createRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
+import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
+import { attachRealtimeServer, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000
 const MAX_BODY_BYTES = 64 * 1024
@@ -149,49 +149,135 @@ async function getRobloxHeadshot(robloxId) {
 }
 
 async function supabaseRequest(env, path, options = {}) {
-  const serverKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY
-  if (!env.SUPABASE_URL || !serverKey) {
+  const serverKeys = [...new Set([env.SUPABASE_SECRET_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter(Boolean))]
+  if (!env.SUPABASE_URL || !serverKeys.length) {
     throw new Error('Supabase server credentials are not configured.')
   }
-  const legacyJwtKey = serverKey.startsWith('eyJ')
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}${path}`, {
-    ...options,
-    headers: {
-      apikey: serverKey,
-      ...(legacyJwtKey ? { Authorization: `Bearer ${serverKey}` } : {}),
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
-  const text = await response.text()
-  const body = text ? JSON.parse(text) : null
-  if (!response.ok) {
-    if (response.status === 401) throw new Error('Authentication is temporarily unavailable. Please try again later.')
-    throw new Error(body?.message || body?.error_description || body?.hint || 'Supabase request failed.')
+  let lastError
+  for (const [index, serverKey] of serverKeys.entries()) {
+    const legacyJwtKey = serverKey.startsWith('eyJ')
+    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}${path}`, {
+      ...options,
+      headers: {
+        apikey: serverKey,
+        ...(legacyJwtKey ? { Authorization: `Bearer ${serverKey}` } : {}),
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+    const text = await response.text()
+    let body
+    try { body = text ? JSON.parse(text) : null } catch { body = null }
+    if (response.ok) return body
+    lastError = new Error(body?.message || body?.error_description || body?.hint || 'Supabase request failed.')
+    if (![401, 403].includes(response.status) || index === serverKeys.length - 1) throw lastError
   }
-  return body
+  throw lastError || new Error('Supabase request failed.')
+}
+
+function requestSessionUser(request, env) {
+  if (!env.RORISK_USER_SECRET) return null
+  const cookies = Object.fromEntries(String(request.headers.cookie || '').split(';').map((part) => {
+    const separator = part.indexOf('=')
+    if (separator < 0) return [part.trim(), '']
+    return [part.slice(0, separator).trim(), decodeURIComponent(part.slice(separator + 1).trim())]
+  }).filter(([name]) => name))
+  return readRealtimeSession(cookies.rorisk_session, (value) => hmac(value, env.RORISK_USER_SECRET))
+}
+
+async function sendStoredCaseImage(response, env, objectPath) {
+  const serverKeys = [...new Set([env.SUPABASE_SECRET_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter(Boolean))]
+  if (!env.SUPABASE_URL || !serverKeys.length) throw new Error('Case image storage is unavailable.')
+
+  let lastStatus = 503
+  for (const [index, serverKey] of serverKeys.entries()) {
+    const legacyJwtKey = serverKey.startsWith('eyJ')
+    const upstream = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/authenticated/case-images/${objectPath}`, {
+      headers: {
+        apikey: serverKey,
+        ...(legacyJwtKey ? { Authorization: `Bearer ${serverKey}` } : {}),
+      },
+    })
+    if (upstream.ok) {
+      response.statusCode = 200
+      response.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/png')
+      response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      response.end(Buffer.from(await upstream.arrayBuffer()))
+      return
+    }
+    lastStatus = upstream.status
+    if (![401, 403].includes(upstream.status) || index === serverKeys.length - 1) break
+  }
+
+  sendJson(response, lastStatus === 404 ? 404 : 503, { error: 'Case image unavailable.' })
+}
+
+function publicCase(row, includeItems = false) {
+  const data = {
+    caseId: row.case_id,
+    name: row.name,
+    slug: row.slug,
+    rocoinAmount: Number(row.rocoin_amount ?? row.amount) || 0,
+    type: row.type,
+    categories: row.categories,
+    levelMin: row.level_min,
+    imageUrl: row.image_url,
+    sortOrder: row.sort_order,
+  }
+  if (includeItems) {
+    data.items = (Array.isArray(row.items) ? row.items : []).map((item, index) => ({
+      ...item,
+      index: Number(item.index) || index + 1,
+      price: Math.max(0, Number(item.price ?? item.amount) || 0),
+      chance: String(item.chance ?? `${Number(item.tickets || 0) / 1000}%`),
+      rarity: item.rarity == null || String(item.rarity).trim() === '' ? null : String(item.rarity).toLowerCase(),
+    }))
+  }
+  return data
+}
+
+function demoCaseOutcomes(caseData, count) {
+  const items = Array.isArray(caseData.items) ? caseData.items : []
+  if (!items.length) throw new Error('This case has no available items.')
+  return Array.from({ length: count }, () => {
+    const roll = randomInt(0, 100_000_000) / 1_000_000
+    let cumulative = 0
+    let selected = items[items.length - 1]
+    for (const item of items) {
+      cumulative += Number.parseFloat(String(item.chance || '0').replace('%', '')) || 0
+      if (roll <= cumulative) {
+        selected = item
+        break
+      }
+    }
+    return { outcome: roll, item: selected }
+  })
 }
 
 async function supabaseAuthRequest(env, path, options = {}) {
-  const serverKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY
-  if (!env.SUPABASE_URL || !serverKey) throw new Error('Authentication is temporarily unavailable. Please try again later.')
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1${path}`, {
-    ...options,
-    headers: {
-      apikey: serverKey,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
-  const text = await response.text()
-  const body = text ? JSON.parse(text) : null
-  if (!response.ok) {
-    if (response.status === 401 && /invalid api key/i.test(String(body?.message || body?.error || ''))) {
-      throw new Error('Authentication is temporarily unavailable. Please try again later.')
+  const serverKeys = [...new Set([env.SUPABASE_SECRET_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter(Boolean))]
+  if (!env.SUPABASE_URL || !serverKeys.length) throw new Error('Authentication is temporarily unavailable. Please try again later.')
+  let lastError
+  for (const [index, serverKey] of serverKeys.entries()) {
+    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1${path}`, {
+      ...options,
+      headers: {
+        apikey: serverKey,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+    const text = await response.text()
+    let body
+    try { body = text ? JSON.parse(text) : null } catch { body = null }
+    if (response.ok) return body
+    const invalidKey = response.status === 401 && /invalid api key/i.test(String(body?.message || body?.error || ''))
+    lastError = new Error(invalidKey ? 'Authentication is temporarily unavailable. Please try again later.' : body?.msg || body?.message || body?.error_description || body?.error || 'Authentication failed. Please try again.')
+    if (![401, 403].includes(response.status) || index === serverKeys.length - 1) {
+      throw lastError
     }
-    throw new Error(body?.msg || body?.message || body?.error_description || body?.error || 'Authentication failed. Please try again.')
   }
-  return body
+  throw lastError || new Error('Authentication failed. Please try again.')
 }
 
 async function upsertProfile(env, profile, conflictColumn) {
@@ -223,9 +309,91 @@ async function completeAuthProfile(env, accessToken) {
 
 async function handleRequest(request, response, env) {
   const url = new URL(request.url, 'http://localhost')
-  if (!url.pathname.startsWith('/api/auth/')) return false
+  if (!url.pathname.startsWith('/api/')) return false
 
   try {
+    if (request.method === 'GET' && url.pathname.startsWith('/api/case-images/')) {
+      const objectPath = decodeURIComponent(url.pathname.slice('/api/case-images/'.length))
+      if (!/^(main|other|items)\/[a-z0-9-]+\.png$/.test(objectPath)) {
+        sendJson(response, 404, { error: 'Case image not found.' })
+        return true
+      }
+      await sendStoredCaseImage(response, env, objectPath)
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/cases') {
+      const query = new URLSearchParams({
+        active: 'eq.true',
+        select: '*',
+        order: 'sort_order.asc',
+      })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
+      sendJson(response, 200, {
+        cases: (rows || []).map((row) => publicCase(row)),
+      })
+      return true
+    }
+
+    const caseRoute = url.pathname.match(/^\/api\/cases\/([a-zA-Z0-9_-]+)$/)
+    if (request.method === 'GET' && caseRoute) {
+      const query = new URLSearchParams({ case_id: `eq.${caseRoute[1]}`, active: 'eq.true', select: '*' })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
+      if (!rows?.[0]) {
+        sendJson(response, 404, { error: 'This case could not be found.' })
+        return true
+      }
+      sendJson(response, 200, { case: publicCase(rows[0], true) })
+      return true
+    }
+
+    const caseOpenRoute = url.pathname.match(/^\/api\/cases\/([a-zA-Z0-9_-]+)\/open$/)
+    if (request.method === 'POST' && caseOpenRoute) {
+      const body = await readJson(request)
+      const count = Math.trunc(Number(body.count))
+      if (![1, 2, 3, 4].includes(count)) throw new Error('Select between 1 and 4 cases.')
+      const query = new URLSearchParams({ case_id: `eq.${caseOpenRoute[1]}`, active: 'eq.true', select: '*' })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
+      if (!rows?.[0]) throw new Error('This case could not be found.')
+      const caseData = publicCase(rows[0], true)
+
+      if (body.demo === true) {
+        sendJson(response, 200, {
+          opening: {
+            uuid: `demo-${randomBytes(12).toString('hex')}`,
+            caseId: caseData.caseId,
+            caseCount: count,
+            demo: true,
+            outcomes: demoCaseOutcomes(caseData, count),
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        return true
+      }
+
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const requestId = /^[0-9a-f-]{36}$/i.test(String(body.requestId || '')) ? body.requestId : randomUUID()
+      const clientSeed = String(body.clientSeed || sessionUser.uuid).slice(0, 128)
+      const serverSeed = randomBytes(32).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/open_rorisk_case', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_case_id: caseData.caseId,
+          p_case_count: count,
+          p_request_id: requestId,
+          p_client_seed: clientSeed,
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      sendJson(response, 200, result)
+      return true
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/auth/config') {
       sendJson(response, 200, {
         hcaptchaSiteKey: env.HCAPTCHA_SITE_KEY || '',
@@ -351,9 +519,11 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    sendJson(response, 400, {
+    const caseServiceRoute = /^\/api\/cases(?:\/|$)/.test(url.pathname)
+    sendJson(response, caseServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: containsInternalConfiguration
-        ? 'Authentication is temporarily unavailable. Please try again later.'
+        || (caseServiceRoute && /could not find the function|schema cache|database/i.test(message))
+        ? 'This service is temporarily unavailable. Please try again later.'
         : message,
     })
   }

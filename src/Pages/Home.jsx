@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import SiteIcon from '../components/Icons'
+import { casinoImageUrl, loadCasinoCatalog } from '../lib/CasinoCatalog'
 
 const banners = [
   { src: '/Banners/rewards.52a9b29c.png', alt: 'Claim your free rewards', width: 1080, height: 420 },
@@ -15,35 +16,6 @@ const originals = [
   ['Dice', '/Games/dice.webm', 'dice', '', '/dice', true],
   ['Case Battles', '/Games/casebattles.webm', 'battles', '', '/battles'],
   ['Cases', '/Games/cases.webm', 'cases', '', '/cases'],
-]
-
-const slotImages = [
-  'hs.2wild2die.jpg',
-  'hs.bennythebeer.jpg',
-  'vs1024lionsd.jpg',
-  'vs10amm.jpg',
-  'vs20wildparty.jpg',
-  'vs243lions.jpg',
-  'vs243lionsgold.jpg',
-  'vs25wolfgmm.jpg',
-  'vs50aladdin.jpg',
-  'vswayscharms.jpg',
-  'vswayslions.jpg',
-  'vswaysmonkey.jpg',
-]
-
-const liveCasinoImages = [
-  '1hl323e1lxuqdrkr.jpg',
-  '225.png',
-  '401.png',
-  'a10megasicbaca10.jpg',
-  'blackjack.jpg',
-  'frenchroulette01.jpg',
-  'g03y1t9vvuhrfytl.jpg',
-  'lucky6roulettea3.jpg',
-  'md500q83g7cdefw1.jpg',
-  'megaroulettbba91.jpg',
-  'snakeladder26101.jpg',
 ]
 
 const methods = [
@@ -449,7 +421,7 @@ function GameCard({ name, video, icon, wide, route, isNew = false }) {
   )
 }
 
-function ThumbnailStrip({ title, folder, images }) {
+function ThumbnailStrip({ title, images, routeBase }) {
   const stripRef = useRef(null)
   const scroll = (direction) => stripRef.current?.scrollBy({ left: 170 * direction, behavior: 'smooth' })
   return (
@@ -463,27 +435,25 @@ function ThumbnailStrip({ title, folder, images }) {
       </div>
       <div className="slots-strip-wrapper" data-v-1cd04c6a="">
         <div ref={stripRef} className="slots-strip" data-v-1cd04c6a="">
-          {images.map((image, index) => (
-            <div className="slots-strip-item" data-v-1cd04c6a="" key={image}>
-              <div
+          {images.map((game, index) => (
+            <div className="slots-strip-item" data-v-1cd04c6a="" key={game.code}>
+              <a
                 className="slot-card slot-card--home"
+                href={`${routeBase}/${encodeURIComponent(game.code)}`}
                 data-v-53767690=""
                 data-v-1cd04c6a=""
-                role="button"
-                tabIndex="0"
-                aria-disabled="false"
                 style={{ animationDelay: `${Math.min(30 * index, 400)}ms` }}
               >
                 <div className="card-thumbnail" data-v-53767690="">
                   <img
                     className="slot-image"
                     data-v-53767690=""
-                    src={`/${folder}/${image}`}
-                    alt="Game thumbnail"
+                    src={casinoImageUrl(game)}
+                    alt={game.name}
                     loading="lazy"
                   />
                 </div>
-              </div>
+              </a>
             </div>
           ))}
         </div>
@@ -493,6 +463,16 @@ function ThumbnailStrip({ title, folder, images }) {
 }
 
 function HomeGames() {
+  const [catalog, setCatalog] = useState({ slots: [], live: [] })
+
+  useEffect(() => {
+    let active = true
+    loadCasinoCatalog().then((games) => {
+      if (active) setCatalog(games)
+    })
+    return () => { active = false }
+  }, [])
+
   return (
     <section className="games-section" data-v-1cd04c6a="" data-v-30c4bf74="">
       <div className="originals-block" data-v-1cd04c6a="">
@@ -501,8 +481,8 @@ function HomeGames() {
           {originals.map(([name, video, icon, wide, route, isNew]) => <GameCard key={name} name={name} video={video} icon={icon} wide={wide} route={route} isNew={isNew} />)}
         </div>
       </div>
-      <ThumbnailStrip title="Popular Slots" folder="Slots" images={slotImages} />
-      <ThumbnailStrip title="Live Casino" folder="Live Casino" images={liveCasinoImages} />
+      <ThumbnailStrip title="Popular Slots" images={catalog.slots.slice(0, 12)} routeBase="/slots" />
+      <ThumbnailStrip title="Live Casino" images={catalog.live.slice(0, 11)} routeBase="/live-casino" />
     </section>
   )
 }

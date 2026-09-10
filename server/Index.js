@@ -185,14 +185,14 @@ function requestSessionUser(request, env) {
   return readRealtimeSession(cookies.rorisk_session, (value) => hmac(value, env.RORISK_USER_SECRET))
 }
 
-async function sendStoredCaseImage(response, env, objectPath) {
+async function sendStoredImage(response, env, bucket, objectPath, label) {
   const serverKeys = [...new Set([env.SUPABASE_SECRET_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter(Boolean))]
-  if (!env.SUPABASE_URL || !serverKeys.length) throw new Error('Case image storage is unavailable.')
+  if (!env.SUPABASE_URL || !serverKeys.length) throw new Error(`${label} image storage is unavailable.`)
 
   let lastStatus = 503
   for (const [index, serverKey] of serverKeys.entries()) {
     const legacyJwtKey = serverKey.startsWith('eyJ')
-    const upstream = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/authenticated/case-images/${objectPath}`, {
+    const upstream = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/authenticated/${bucket}/${objectPath}`, {
       headers: {
         apikey: serverKey,
         ...(legacyJwtKey ? { Authorization: `Bearer ${serverKey}` } : {}),
@@ -209,7 +209,7 @@ async function sendStoredCaseImage(response, env, objectPath) {
     if (![401, 403].includes(upstream.status) || index === serverKeys.length - 1) break
   }
 
-  sendJson(response, lastStatus === 404 ? 404 : 503, { error: 'Case image unavailable.' })
+  sendJson(response, lastStatus === 404 ? 404 : 503, { error: `${label} image unavailable.` })
 }
 
 function publicCase(row, includeItems = false) {
@@ -234,6 +234,20 @@ function publicCase(row, includeItems = false) {
     }))
   }
   return data
+}
+
+function publicCasinoGame(row) {
+  return {
+    code: row.game_code,
+    name: row.game_name,
+    provider: row.provider,
+    providerCode: row.provider_code,
+    image: row.image_url,
+    launchCount: Number(row.launch_count) || 0,
+    popularRank: Number(row.popular_rank) || 0,
+    newestRank: row.newest_rank == null ? null : Number(row.newest_rank),
+    demoSupport: row.demo_support === true,
+  }
 }
 
 function demoCaseOutcomes(caseData, count) {
@@ -318,7 +332,34 @@ async function handleRequest(request, response, env) {
         sendJson(response, 404, { error: 'Case image not found.' })
         return true
       }
-      await sendStoredCaseImage(response, env, objectPath)
+      await sendStoredImage(response, env, 'case-images', objectPath, 'Case')
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/api/casino-images/')) {
+      const objectPath = decodeURIComponent(url.pathname.slice('/api/casino-images/'.length))
+      if (!/^(slots|live-casino)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
+        sendJson(response, 404, { error: 'Casino image not found.' })
+        return true
+      }
+      await sendStoredImage(response, env, 'casino-images', objectPath, 'Casino')
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/casino-games') {
+      const query = new URLSearchParams({
+        active: 'eq.true',
+        select: 'game_code,game_name,provider,provider_code,image_url,launch_count,popular_rank,newest_rank,demo_support',
+        order: 'popular_rank.asc',
+      })
+      const [slots, live] = await Promise.all([
+        supabaseRequest(env, `/rest/v1/rorisk_slots?${query}`),
+        supabaseRequest(env, `/rest/v1/rorisk_live_games?${query}`),
+      ])
+      sendJson(response, 200, {
+        slots: (slots || []).map(publicCasinoGame),
+        live: (live || []).map(publicCasinoGame),
+      })
       return true
     }
 

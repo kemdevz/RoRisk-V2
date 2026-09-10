@@ -18,6 +18,9 @@ import Affiliates from './Pages/Affiliates'
 import Race from './Pages/Race'
 import Cases from './Pages/Cases'
 import CaseOpen from './Pages/CaseOpen'
+import Slots from './Pages/Slots'
+import LiveCasino from './Pages/LiveCasino'
+import CasinoGame from './Pages/CasinoGame'
 import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 
@@ -101,7 +104,7 @@ function App() {
       if (!anchor || anchor.target || anchor.hasAttribute('download')) return
 
       const url = new URL(anchor.href, window.location.href)
-      if (url.origin !== window.location.origin || !(/^\/cases\/[a-zA-Z0-9_-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases'].includes(url.pathname))) return
+      if (url.origin !== window.location.origin || !(/^\/(?:cases|slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases', '/slots', '/live-casino'].includes(url.pathname))) return
 
       event.preventDefault()
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return
@@ -186,8 +189,9 @@ function App() {
   if (loaderPhase !== 'done') return <LoadingScreen leaving={loaderPhase === 'leaving'} />
 
   const caseMatch = displayedPath.match(/^\/cases\/([a-zA-Z0-9_-]+)$/)
-  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases }
-  const Page = caseMatch ? CaseOpen : pages[displayedPath] || Home
+  const casinoMatch = displayedPath.match(/^\/(slots|live-casino)\/([a-zA-Z0-9_.-]+)$/)
+  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases, '/slots': Slots, '/live-casino': LiveCasino }
+  const Page = caseMatch ? CaseOpen : casinoMatch ? CasinoGame : pages[displayedPath] || Home
   const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
   const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }
   const openStatistics = () => { setSiteModalClosing(false); setSiteModal({ type: 'statistics' }) }
@@ -216,7 +220,7 @@ function App() {
         >
           <div className="content-wrapper">
             <div className={routeClass}>
-              <Page key={displayedPath} user={user} caseId={caseMatch?.[1]} onSignIn={() => setAuthModal('login')} />
+              <Page key={displayedPath} user={user} caseId={caseMatch?.[1]} gameId={casinoMatch?.[2]} live={casinoMatch?.[1] === 'live-casino'} onSignIn={() => setAuthModal('login')} />
             </div>
           </div>
           <Footer />

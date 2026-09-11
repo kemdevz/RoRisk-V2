@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import SiteIcon from '../components/Icons'
 import ModalAnimation from '../components/ModalAnimation'
 import { getFairClientSeed, incrementFairNonce } from '../lib/Fairness'
@@ -118,14 +118,15 @@ function CoinflipControls({ user, currency, busy, onCreate, sort, onSort }) {
   </div>
 }
 
-function CoinflipCard({ game, user, busy, onOpen, onBot, entering = false, style }) {
+function CoinflipCard({ game, user, busy, onOpen, onBot, entryPhase = 'done', onEntryEnd, elementRef, style }) {
   const blue = participantForCoin(game, 'blue')
   const orange = participantForCoin(game, 'orange')
   const completed = game.state === 'completed'
   const isCreator = participantUserId(game.creator) === userId(user)
   const canBot = game.state === 'created' && !game.opponent && isCreator
   const player = (participant, coin) => <div className={`coinflip-games-element-left-players-player${completed && participant && game.winningCoin !== coin ? ' losing-player' : ''}`} {...cardScope}><div className={`coinflip-games-element-left-players-player-avatar${completed && participant && game.winningCoin === coin ? ' player-winner' : ''}`} {...cardScope}>{completed && participant && game.winningCoin !== coin && <img className="crossed-icon" src={CROSS} alt="Cross" {...cardScope} />}<img className="avatar-image" src={participant?.bot ? BOT_PLAYER : participant?.user?.avatar || participant?.user?.avatar_headshot || EMPTY_PLAYER} alt={participant?.user?.username || (participant?.bot ? 'Bot Avatar' : 'No Player')} {...cardScope} /><div className="coinflip-games-element-left-players-player-avatar-coins" {...cardScope}><img className={`coinflip-games-element-left-players-player-avatar-coin ${coin}`} src={coinIcon(coin)} alt={coin === 'blue' ? 'Blue' : 'Orange'} {...cardScope} /></div></div><div className="coinflip-games-element-left-players-player-name" {...cardScope}><span {...cardScope}>{participant?.bot ? 'Risk Bot' : participant?.user?.username || 'Waiting...'}</span></div></div>
-  return <div className={`coinflip-games-element game-item-enter-active${entering ? ' game-item-enter-from' : ' game-item-enter-to'}${game.opponent ? ' element-full' : ''}${completed ? ` element-completed ${game.winningCoin}-winner` : ''}`} style={style} onClick={() => onOpen(game)} {...gamesScope} {...cardScope}>
+  const entryClass = entryPhase === 'done' ? '' : ` game-item-enter-active game-item-enter-${entryPhase}`
+  return <div ref={elementRef} className={`coinflip-games-element${entryClass}${game.opponent ? ' element-full' : ''}${completed ? ` element-completed ${game.winningCoin}-winner` : ''}`} style={style} onTransitionEnd={onEntryEnd} onClick={() => onOpen(game)} {...gamesScope} {...cardScope}>
     <div className="coinflip-games-element-left" {...cardScope}><div className="coinflip-games-element-left-players" {...cardScope}>{player(blue, 'blue')}<SiteIcon name="battles" className="sword-icon" {...cardScope} />{player(orange, 'orange')}</div></div>
     {completed && <div className="coinflip-games-element-center-winner" {...cardScope}><div className="coinflip-games-element-center-winner-coin" {...cardScope}><img src={coinIcon(game.winningCoin)} alt={game.winningCoin} {...cardScope} /></div></div>}
     <div className="coinflip-games-element-right" {...cardScope}><div className="coinflip-games-element-center-price" {...cardScope}><img src={currencyIcon(game.currency)} alt="Coins" {...cardScope} /><span {...cardScope}>{formatAmount(game.amount)}</span></div><div className="seperator" {...cardScope} /><div className="coinflip-games-element-right-buttons" {...cardScope}>{canBot ? <button className="button join-game" disabled={busy} onClick={(event) => { event.stopPropagation(); onBot(game) }} {...cardScope}>Call Bot</button> : !game.opponent && game.state === 'created' ? <button className="button join-game" onClick={(event) => { event.stopPropagation(); onOpen(game) }} {...cardScope}>Join Game</button> : null}<button className="button view-game" onClick={(event) => { event.stopPropagation(); onOpen(game) }} {...cardScope}><EyeIcon /></button></div></div>
@@ -133,13 +134,17 @@ function CoinflipCard({ game, user, busy, onOpen, onBot, entering = false, style
 }
 
 function AnimatedCoinflipCard(props) {
-  const [entering, setEntering] = useState(true)
+  const [entryPhase, setEntryPhase] = useState('from')
   useEffect(() => {
     let secondFrame
-    const firstFrame = requestAnimationFrame(() => { secondFrame = requestAnimationFrame(() => setEntering(false)) })
-    return () => { cancelAnimationFrame(firstFrame); if (secondFrame) cancelAnimationFrame(secondFrame) }
+    const firstFrame = requestAnimationFrame(() => { secondFrame = requestAnimationFrame(() => setEntryPhase('to')) })
+    const fallback = window.setTimeout(() => setEntryPhase('done'), 1000)
+    return () => { cancelAnimationFrame(firstFrame); if (secondFrame) cancelAnimationFrame(secondFrame); window.clearTimeout(fallback) }
   }, [])
-  return <CoinflipCard {...props} entering={entering} />
+  const finishEntry = (event) => {
+    if (event.target === event.currentTarget && entryPhase === 'to') setEntryPhase('done')
+  }
+  return <CoinflipCard {...props} entryPhase={entryPhase} onEntryEnd={finishEntry} />
 }
 
 function CoinAnimation({ coin }) {
@@ -250,6 +255,9 @@ function Coinflip({ user }) {
   const [fairness, setFairness] = useState(null)
   const [count, setCount] = useState(0)
   const countRef = useRef(0)
+  const rowElements = useRef(new Map())
+  const previousRowPositions = useRef(new Map())
+  const rowMoveAnimations = useRef(new Map())
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const refresh = useCallback(async () => {
     try {
@@ -302,6 +310,32 @@ function Coinflip({ user }) {
       ...games.filter((game) => game.state === 'completed').sort(compare),
     ]
   }, [games, sort])
+  useLayoutEffect(() => {
+    const nextPositions = new Map()
+    rowElements.current.forEach((element, id) => nextPositions.set(id, element.getBoundingClientRect()))
+    nextPositions.forEach((next, id) => {
+      const previous = previousRowPositions.current.get(id)
+      const element = rowElements.current.get(id)
+      if (!previous || !element) return
+      const deltaX = previous.left - next.left
+      const deltaY = previous.top - next.top
+      if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return
+      rowMoveAnimations.current.get(id)?.cancel()
+      const animation = element.animate([
+        { transform: `translate(${deltaX}px, ${deltaY}px)` },
+        { transform: 'translate(0, 0)' },
+      ], { duration: 500, easing: 'cubic-bezier(.2,.8,.2,1)' })
+      rowMoveAnimations.current.set(id, animation)
+      animation.onfinish = () => rowMoveAnimations.current.delete(id)
+      animation.oncancel = () => rowMoveAnimations.current.delete(id)
+    })
+    previousRowPositions.current = nextPositions
+  }, [sorted])
+  useEffect(() => () => rowMoveAnimations.current.forEach((animation) => animation.cancel()), [])
+  const setRowElement = useCallback((id, element) => {
+    if (element) rowElements.current.set(id, element)
+    else rowElements.current.delete(id)
+  }, [])
   const request = async (path, body) => {
     setBusy(true)
     try {
@@ -326,7 +360,7 @@ function Coinflip({ user }) {
     window.history.pushState({}, '', '/provably-fair')
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
-  return <div className="coinflip" {...pageScope}><CoinflipControls user={user} currency={currency} busy={busy} onCreate={create} sort={sort} onSort={setSort} /><div className="coinflip-games" {...gamesScope}><div className="games-container" {...gamesScope}><div className="games-header" {...gamesScope}><div className="header-title" {...gamesScope}>Active Games: <span {...gamesScope}>{count}</span></div></div><div className="games-content" {...gamesScope}>{loading ? <div className="content-loading" {...gamesScope}>{Array.from({ length: 25 }, (_, index) => <div className="loading-placeholder" key={index} {...gamesScope} />)}</div> : sorted.length ? <div className="content-list" {...gamesScope}><div className="games-list" {...gamesScope}>{sorted.map((game, index) => <AnimatedCoinflipCard style={{ '--animation-delay': `${index * .05}s` }} key={game._id} game={game} user={user} busy={busy} onOpen={open} onBot={(selectedGame) => action(selectedGame, 'bot')} />)}</div></div> : <div className="content-empty" {...gamesScope} />}</div></div></div>
+  return <div className="coinflip" {...pageScope}><CoinflipControls user={user} currency={currency} busy={busy} onCreate={create} sort={sort} onSort={setSort} /><div className="coinflip-games" {...gamesScope}><div className="games-container" {...gamesScope}><div className="games-header" {...gamesScope}><div className="header-title" {...gamesScope}>Active Games: <span {...gamesScope}>{count}</span></div></div><div className="games-content" {...gamesScope}>{loading ? <div className="content-loading" {...gamesScope}>{Array.from({ length: 25 }, (_, index) => <div className="loading-placeholder" key={index} {...gamesScope} />)}</div> : sorted.length ? <div className="content-list" {...gamesScope}><div className="games-list" {...gamesScope}>{sorted.map((game, index) => <AnimatedCoinflipCard elementRef={(element) => setRowElement(game._id, element)} style={{ '--animation-delay': `${index * .05}s` }} key={game._id} game={game} user={user} busy={busy} onOpen={open} onBot={(selectedGame) => action(selectedGame, 'bot')} />)}</div></div> : <div className="content-empty" {...gamesScope} />}</div></div></div>
     {selected && !fairness && <ModalAnimation label="Coinflip Game" onClose={close}><CoinflipGameModal game={selected} user={user} busy={busy} onAction={action} onFairness={openFairness} /></ModalAnimation>}
     {fairness && <ModalAnimation label="Game Fairness" onClose={() => setFairness(null)}><CoinflipFairGame game={fairness} onVerify={verifyGame} /></ModalAnimation>}
   </div>

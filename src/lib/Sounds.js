@@ -3,6 +3,7 @@ export const SOUND_PATHS = Object.freeze({
 })
 
 const players = new Map()
+const lastPlayedAt = new Map()
 
 export function getSoundVolume() {
   const saved = Number(window.localStorage.getItem('rorisk_sound_volume') ?? window.localStorage.getItem('soundVolume') ?? 1)
@@ -16,11 +17,14 @@ export function setSoundVolume(volume) {
   for (const player of players.values()) player.volume = next
 }
 
-export function playSound(name, { restart = true, volume = 1 } = {}) {
+export function playSound(name, { restart = true, volume = 1, dedupeMs = 0 } = {}) {
   const path = SOUND_PATHS[name]
   const masterVolume = getSoundVolume()
   if (!path || masterVolume <= 0) return null
   let player = players.get(name)
+  const now = performance.now()
+  if (dedupeMs > 0 && now - (lastPlayedAt.get(name) ?? Number.NEGATIVE_INFINITY) < dedupeMs) return player || null
+  lastPlayedAt.set(name, now)
   if (!player) {
     player = new Audio(path)
     player.preload = 'auto'

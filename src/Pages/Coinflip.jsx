@@ -23,6 +23,16 @@ const userId = (user) => user?.uuid || user?.id || user?._id
 const participantUserId = (participant) => userId(participant?.user)
 const participantForCoin = (game, coin) => [game.creator, game.opponent].find((participant) => participant?.coin === coin)
 const levelTheme = (level) => level >= 80 ? 'purple' : level >= 60 ? 'red' : level >= 40 ? 'orange' : level >= 20 ? 'green' : 'blue'
+const sameGame = (first, second) => first === second || JSON.stringify(first) === JSON.stringify(second)
+const upsertGame = (games, game) => {
+  const index = games.findIndex((item) => item._id === game._id)
+  if (index < 0) return [game, ...games]
+  if (sameGame(games[index], game)) return games
+  const next = [...games]
+  next[index] = game
+  return next
+}
+const sameGameList = (first, second) => first.length === second.length && first.every((game, index) => sameGame(game, second[index]))
 
 function LevelBadge({ level }) {
   return <div className={`box-level level-${levelTheme(Number(level) || 0)}`} data-v-ff759fba=""><div className="level-inner" data-v-ff759fba="">{Number(level) || 0}</div></div>
@@ -184,7 +194,7 @@ function CoinAnimation({ coin }) {
         contexts.forEach((context) => { context.clearRect(0, 0, size, size); context.drawImage(images[row], column * 500, 0, 500, 500, 0, 0, size, size) })
         if (frame < 149) frameRequest = requestAnimationFrame(draw)
       }
-      playSound('flip')
+      playSound('flip', { dedupeMs: 400 })
       frameRequest = requestAnimationFrame(draw)
     })
     return () => { alive = false; if (frameRequest) cancelAnimationFrame(frameRequest) }
@@ -218,7 +228,7 @@ function CoinflipGameModal({ game, user, busy, onAction, onFairness }) {
   const countdown = Math.min(3, Math.max(1, Math.ceil((3000 - elapsed) / 1000)))
   useEffect(() => {
     if (phase !== 'countdown' || lastCountdown.current === countdown) return
-    if (lastCountdown.current != null) playSound('countdown')
+    if (lastCountdown.current != null) playSound('countdown', { dedupeMs: 400 })
     lastCountdown.current = countdown
   }, [countdown, phase])
   useEffect(() => {
@@ -228,7 +238,7 @@ function CoinflipGameModal({ game, user, busy, onAction, onFairness }) {
     const storageKey = 'coinflipCashSoundPlayed'
     const played = (() => { try { return JSON.parse(window.localStorage.getItem(storageKey) || '[]') } catch { return [] } })()
     if (played.includes(game._id)) return
-    playSound('cash')
+    playSound('cash', { dedupeMs: 750 })
     window.localStorage.setItem(storageKey, JSON.stringify([...played, game._id]))
   }, [game, phase, user])
   const blue = participantForCoin(game, 'blue')
@@ -255,17 +265,27 @@ function Coinflip({ user }) {
   const [fairness, setFairness] = useState(null)
   const [count, setCount] = useState(0)
   const countRef = useRef(0)
+  const requestLock = useRef(false)
+  const refreshSequence = useRef(0)
   const rowElements = useRef(new Map())
   const previousRowPositions = useRef(new Map())
-  const rowMoveAnimations = useRef(new Map())
+  const rowMoveFrames = useRef(new Set())
+  const rowMoveTimers = useRef(new Map())
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current
     try {
       const response = await fetch('/api/coinflip/games')
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error)
-      setGames(payload.games || [])
-      setSelected((current) => current ? (payload.games || []).find((game) => game._id === current._id) || current : current)
+      if (sequence !== refreshSequence.current) return
+      const nextGames = payload.games || []
+      setGames((current) => sameGameList(current, nextGames) ? current : nextGames)
+      setSelected((current) => {
+        if (!current) return current
+        const next = nextGames.find((game) => game._id === current._id)
+        return !next || sameGame(current, next) ? current : next
+      })
     } catch { setGames((current) => current) } finally { setLoading(false) }
   }, [])
   useEffect(() => {
@@ -276,8 +296,8 @@ function Coinflip({ user }) {
     const realtimeUpdate = (event) => {
       const game = event.detail?.game
       if (!game?._id) return
-      setGames((current) => [game, ...current.filter((item) => item._id !== game._id)])
-      setSelected((current) => current?._id === game._id ? game : current)
+      setGames((current) => upsertGame(current, game))
+      setSelected((current) => current?._id === game._id && !sameGame(current, game) ? game : current)
       transitionTimers.push(window.setTimeout(refresh, 3100), window.setTimeout(refresh, 5600))
     }
     window.addEventListener('rorisk:coinflip-update', realtimeUpdate)
@@ -313,6 +333,7 @@ function Coinflip({ user }) {
   useLayoutEffect(() => {
     const nextPositions = new Map()
     rowElements.current.forEach((element, id) => nextPositions.set(id, element.getBoundingClientRect()))
+    const movedElements = []
     nextPositions.forEach((next, id) => {
       const previous = previousRowPositions.current.get(id)
       const element = rowElements.current.get(id)
@@ -320,23 +341,42 @@ function Coinflip({ user }) {
       const deltaX = previous.left - next.left
       const deltaY = previous.top - next.top
       if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return
-      rowMoveAnimations.current.get(id)?.cancel()
-      const animation = element.animate([
-        { transform: `translate(${deltaX}px, ${deltaY}px)` },
-        { transform: 'translate(0, 0)' },
-      ], { duration: 500, easing: 'cubic-bezier(.2,.8,.2,1)' })
-      rowMoveAnimations.current.set(id, animation)
-      animation.onfinish = () => rowMoveAnimations.current.delete(id)
-      animation.oncancel = () => rowMoveAnimations.current.delete(id)
+      window.clearTimeout(rowMoveTimers.current.get(id))
+      element.classList.remove('game-item-move')
+      element.style.transition = 'none'
+      element.style.transform = `translate(${deltaX}px, ${deltaY}px)`
+      movedElements.push([id, element])
     })
     previousRowPositions.current = nextPositions
+    if (!movedElements.length) return undefined
+    void document.body.offsetHeight
+    const frame = window.requestAnimationFrame(() => {
+      rowMoveFrames.current.delete(frame)
+      movedElements.forEach(([id, element]) => {
+        element.classList.add('game-item-move')
+        element.style.transition = ''
+        element.style.transform = ''
+        const timer = window.setTimeout(() => {
+          element.classList.remove('game-item-move')
+          rowMoveTimers.current.delete(id)
+        }, 520)
+        rowMoveTimers.current.set(id, timer)
+      })
+    })
+    rowMoveFrames.current.add(frame)
+    return undefined
   }, [sorted])
-  useEffect(() => () => rowMoveAnimations.current.forEach((animation) => animation.cancel()), [])
+  useEffect(() => () => {
+    rowMoveFrames.current.forEach((frame) => window.cancelAnimationFrame(frame))
+    rowMoveTimers.current.forEach((timer) => window.clearTimeout(timer))
+  }, [])
   const setRowElement = useCallback((id, element) => {
     if (element) rowElements.current.set(id, element)
     else rowElements.current.delete(id)
   }, [])
   const request = async (path, body) => {
+    if (requestLock.current) return null
+    requestLock.current = true
     setBusy(true)
     try {
       const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -344,15 +384,15 @@ function Coinflip({ user }) {
       if (!response.ok) throw new Error(payload.error || 'Unable to update this game.')
       if (payload.user) window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: payload.user } }))
       if (payload.game) {
-        setSelected((current) => current?._id === payload.game._id ? payload.game : current)
-        setGames((current) => [payload.game, ...current.filter((game) => game._id !== payload.game._id)])
+        setSelected((current) => current?._id === payload.game._id && !sameGame(current, payload.game) ? payload.game : current)
+        setGames((current) => upsertGame(current, payload.game))
       }
       incrementFairNonce(user, 1)
       return payload
-    } catch (error) { notify({ type: 'error', message: error.message || 'Unable to update this game.' }); return null } finally { setBusy(false) }
+    } catch (error) { notify({ type: 'error', message: error.message || 'Unable to update this game.' }); return null } finally { requestLock.current = false; setBusy(false) }
   }
   const create = async (amount, coin) => request('/api/coinflip/games', { amount, coin, currency, clientSeed: getFairClientSeed(user) })
-  const action = async (game, type) => { const payload = await request(`/api/coinflip/games/${game._id}/${type}`, { clientSeed: getFairClientSeed(user) }); if (payload) playSound('join') }
+  const action = async (game, type) => { const payload = await request(`/api/coinflip/games/${game._id}/${type}`, { clientSeed: getFairClientSeed(user) }); if (payload) playSound('join', { dedupeMs: 750 }) }
   const open = (game) => setSelected(game)
   const close = () => setSelected(null)
   const openFairness = (game) => { setSelected(null); setFairness(game) }

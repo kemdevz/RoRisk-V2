@@ -1,58 +1,6 @@
-alter table public.rorisk_coinflip_games drop column if exists creator_rank;
-alter table public.rorisk_coinflip_games drop column if exists creator_level;
-alter table public.rorisk_coinflip_games drop column if exists opponent_rank;
-alter table public.rorisk_coinflip_games drop column if exists opponent_level;
-alter table public.rorisk_coinflip_games drop column if exists winner_rank;
-alter table public.rorisk_coinflip_games drop column if exists winner_level;
 alter table public.rorisk_coinflip_games add column if not exists eos_block_id text;
 alter table public.rorisk_coinflip_games add column if not exists eos_block_number bigint;
 alter table public.rorisk_coinflip_games add column if not exists ticket integer check (ticket between 0 and 999999);
-
-create or replace function public.create_rorisk_coinflip(
-  p_user_uuid uuid,
-  p_amount bigint,
-  p_currency text,
-  p_coin text,
-  p_client_seed text,
-  p_server_seed text,
-  p_server_seed_hash text
-) returns jsonb
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-  v_user public.rorisk_users%rowtype;
-  v_game public.rorisk_coinflip_games%rowtype;
-  v_balance bigint;
-  v_nonce bigint;
-begin
-  if p_currency not in ('coins', 'rocoins') then raise exception 'The selected currency is invalid.'; end if;
-  if p_coin not in ('blue', 'orange') then raise exception 'Please select blue or orange.'; end if;
-  if p_amount < 50 or p_amount > 500000 then raise exception 'Your entered bet amount is invalid.'; end if;
-  if encode(digest(p_server_seed, 'sha256'), 'hex') <> p_server_seed_hash then raise exception 'The coinflip seed is invalid.'; end if;
-
-  select * into v_user from public.rorisk_users where uuid = p_user_uuid for update;
-  if not found then raise exception 'Please sign in to perform this action.'; end if;
-  v_balance := case when p_currency = 'coins' then coalesce(v_user.coins, 0) else coalesce(v_user.rocoins, 0) end;
-  if v_balance < p_amount then raise exception 'Insufficient balance.'; end if;
-  if p_currency = 'coins' then
-    update public.rorisk_users set coins = coalesce(coins, 0) - p_amount where uuid = p_user_uuid returning * into v_user;
-  else
-    update public.rorisk_users set rocoins = coalesce(rocoins, 0) - p_amount where uuid = p_user_uuid returning * into v_user;
-  end if;
-
-  select coalesce(max(nonce) + 1, 0) into v_nonce from public.rorisk_coinflip_games where creator_uuid = p_user_uuid;
-  insert into public.rorisk_coinflip_games (
-    creator_uuid, creator_roblox_id, creator_username, creator_avatar_headshot, creator_coin,
-    currency, amount, client_seed, server_seed_hash, server_seed, nonce
-  ) values (
-    v_user.uuid, v_user.roblox_id, v_user.username, v_user.avatar_headshot, p_coin,
-    p_currency, p_amount, left(coalesce(p_client_seed, p_user_uuid::text), 128), p_server_seed_hash, p_server_seed, v_nonce
-  ) returning * into v_game;
-  return jsonb_build_object('game', to_jsonb(v_game), 'user', to_jsonb(v_user));
-end;
-$$;
 
 drop function if exists public.join_rorisk_coinflip(uuid, uuid, boolean);
 
@@ -151,7 +99,5 @@ begin
 end;
 $$;
 
-revoke all on function public.create_rorisk_coinflip(uuid, bigint, text, text, text, text, text) from public, anon, authenticated;
 revoke all on function public.join_rorisk_coinflip(uuid, uuid, boolean, text, bigint, integer) from public, anon, authenticated;
-grant execute on function public.create_rorisk_coinflip(uuid, bigint, text, text, text, text, text) to service_role;
 grant execute on function public.join_rorisk_coinflip(uuid, uuid, boolean, text, bigint, integer) to service_role;

@@ -56,10 +56,11 @@ function CoinflipFairGame({ game }) {
     ['Game ID', game.gameId || game._id],
     ['Server Seed (Hashed)', game.fair?.serverSeedHash || ''],
     ...(game.fair?.serverSeed ? [['Server Seed', game.fair.serverSeed]] : []),
-    ...(game.fair?.clientSeed ? [['EOS Block ID', game.fair.clientSeed]] : []),
+    ...(game.fair?.eosBlockId ? [['EOS Block ID', game.fair.eosBlockId]] : []),
+    ...(game.fair?.eosBlockNumber != null ? [['EOS Block Number', game.fair.eosBlockNumber]] : []),
     ...(game.fair?.ticket != null ? [['Ticket', Number(game.fair.ticket).toLocaleString('en-US')]] : []),
   ]
-  return <div className="modal-fair-game" {...fairScope}><div className="game-group" {...fairScope}><div className="game-header" {...fairScope}><span {...fairScope}>Game Fairness</span></div>{values.map(([label, value]) => <div className="game-element" key={label} {...fairScope}><div className="element-title" {...fairScope}>{label}</div><div className="element-content" {...fairScope}><span {...fairScope}>{value}</span><button className="button-copy" type="button" title="Copy to clipboard" onClick={() => copy(value)} {...fairScope}><CopyIcon /></button></div></div>)}{game.fair?.serverSeed && <div className="verify-button-container" {...fairScope}><button className="button-verify" type="button" onClick={() => notify({ type: 'success', message: 'This game is provably fair.' })} {...fairScope}>Verify Game</button></div>}</div></div>
+  return <div className="modal-fair-game" {...fairScope}><div className="game-group" {...fairScope}><div className="game-header" {...fairScope}><span {...fairScope}>Game Fairness</span></div>{values.map(([label, value]) => <div className="game-element" key={label} {...fairScope}><div className="element-title" {...fairScope}>{label}</div><div className="element-content" {...fairScope}><span {...fairScope}>{value}</span><button className="button-copy" type="button" title="Copy to clipboard" onClick={() => copy(value)} {...fairScope}><CopyIcon /></button></div></div>)}</div></div>
 }
 
 function PlayerAvatar({ participant, coin, completed, winningCoin, scope = cardScope }) {

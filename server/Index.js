@@ -284,9 +284,6 @@ function publicCoinflipGame(row) {
         ? 'in_progress'
         : row.state
   const winner = row.winner_is_bot ? { bot: true } : player('winner')
-  const ticket = row.winning_coin && row.server_seed
-    ? Number.parseInt(createHash('sha256').update(`${row.server_seed}:${row.client_seed}:${row.nonce}`).digest('hex').slice(0, 8), 16)
-    : null
   return {
     _id: row.uuid,
     uuid: row.uuid,
@@ -309,9 +306,37 @@ function publicCoinflipGame(row) {
       serverSeedHash: row.server_seed_hash,
       serverSeed: state === 'completed' ? row.server_seed : null,
       nonce: Number(row.nonce) || 0,
-      ticket,
+      eosBlockId: row.eos_block_id,
+      eosBlockNumber: row.eos_block_number == null ? null : Number(row.eos_block_number),
+      ticket: row.ticket == null ? null : Number(row.ticket),
     },
   }
+}
+
+async function latestEosBlock(env) {
+  const endpoint = String(env.EOS_API_URL || 'https://eos.greymass.com').replace(/\/$/, '')
+  const post = async (path, body) => {
+    const response = await fetch(`${endpoint}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!response.ok) throw new Error('The EOS fairness service is temporarily unavailable.')
+    return response.json()
+  }
+  const info = await post('/v1/chain/get_info', {})
+  const blockNumber = Number(info.last_irreversible_block_num)
+  if (!Number.isSafeInteger(blockNumber) || blockNumber < 1) throw new Error('The EOS fairness service returned an invalid block.')
+  let block
+  try {
+    block = await post('/v1/chain/get_block_info', { block_num: blockNumber })
+  } catch {
+    block = await post('/v1/chain/get_block', { block_num_or_id: blockNumber })
+  }
+  const blockId = String(block.id || '').toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(blockId)) throw new Error('The EOS fairness service returned an invalid block.')
+  return { blockId, blockNumber }
 }
 
 async function coinflipGameByUuid(env, uuid) {
@@ -563,12 +588,19 @@ async function handleRequest(request, response, env) {
     if (request.method === 'POST' && coinflipActionRoute) {
       const sessionUser = requestSessionUser(request, env)
       if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const eosBlock = await latestEosBlock(env)
+      const existingGame = await coinflipGameByUuid(env, coinflipActionRoute[1])
+      const outcomeHash = createHash('sha512').update(`${existingGame.server_seed}-${eosBlock.blockId}`).digest('hex')
+      const ticket = Number.parseInt(outcomeHash.slice(0, 16), 16) % 1000000
       const result = await supabaseRequest(env, '/rest/v1/rpc/join_rorisk_coinflip', {
         method: 'POST',
         body: JSON.stringify({
           p_game_uuid: coinflipActionRoute[1],
           p_user_uuid: sessionUser.uuid,
           p_bot: coinflipActionRoute[2] === 'bot',
+          p_eos_block_id: eosBlock.blockId,
+          p_eos_block_number: eosBlock.blockNumber,
+          p_ticket: ticket,
         }),
       })
       if (result?.user) startRealtimeSession(request, response, env, result.user)

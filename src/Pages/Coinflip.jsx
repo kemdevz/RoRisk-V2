@@ -50,7 +50,7 @@ function CopyIcon() {
   return <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true" {...fairScope}><path d="M15.4567 1.6667H7.87683C6.29075 1.6667 5.00008 2.95737 5.00008 4.54345V5.00004H4.5435C2.95741 5.00004 1.66675 6.2907 1.66675 7.87679V15.4565C1.66675 17.0427 2.95741 18.3334 4.5435 18.3334H12.1232C13.5803 18.3334 14.7751 17.2402 14.9619 15.8334H15.4566C17.0427 15.8334 18.3334 14.5427 18.3334 12.9566V4.54345C18.3334 2.95737 17.0427 1.6667 15.4567 1.6667ZM16.6667 12.9566C16.6667 13.6239 16.1239 14.1667 15.4567 14.1667H15.0001V7.87679C15.0001 6.2907 13.7094 5.00004 12.1233 5.00004H6.66675V4.54345C6.66675 3.8762 7.20958 3.33337 7.87683 3.33337H15.4566C16.1239 3.33337 16.6667 3.8762 16.6667 4.54345V12.9566Z" fill="currentColor" {...fairScope} /></svg>
 }
 
-function CoinflipFairGame({ game }) {
+function CoinflipFairGame({ game, onVerify }) {
   const copy = async (value) => { await copyText(String(value)); notify({ type: 'success', message: 'Copied to your clipboard.' }) }
   const values = [
     ['Game ID', game.gameId || game._id],
@@ -60,7 +60,7 @@ function CoinflipFairGame({ game }) {
     ...(game.fair?.eosBlockNumber != null ? [['EOS Block Number', game.fair.eosBlockNumber]] : []),
     ...(game.fair?.ticket != null ? [['Ticket', Number(game.fair.ticket).toLocaleString('en-US')]] : []),
   ]
-  return <div className="modal-fair-game" {...fairScope}><div className="game-group" {...fairScope}><div className="game-header" {...fairScope}><span {...fairScope}>Game Fairness</span></div>{values.map(([label, value]) => <div className="game-element" key={label} {...fairScope}><div className="element-title" {...fairScope}>{label}</div><div className="element-content" {...fairScope}><span {...fairScope}>{value}</span><button className="button-copy" type="button" title="Copy to clipboard" onClick={() => copy(value)} {...fairScope}><CopyIcon /></button></div></div>)}</div></div>
+  return <div className="modal-fair-game" {...fairScope}><div className="game-group" {...fairScope}><div className="game-header" {...fairScope}><span {...fairScope}>Game Fairness</span></div>{values.map(([label, value]) => <div className="game-element" key={label} {...fairScope}><div className="element-title" {...fairScope}>{label}</div><div className="element-content" {...fairScope}><span {...fairScope}>{value}</span><button className="button-copy" type="button" title="Copy to clipboard" onClick={() => copy(value)} {...fairScope}><CopyIcon /></button></div></div>)}</div><div className="verify-button-container" {...fairScope}><button className="button-verify" type="button" onClick={onVerify} {...fairScope}>Verify Game</button></div></div>
 }
 
 function PlayerAvatar({ participant, coin, completed, winningCoin, scope = cardScope }) {
@@ -322,9 +322,13 @@ function Coinflip({ user }) {
   const open = (game) => setSelected(game)
   const close = () => setSelected(null)
   const openFairness = (game) => { setSelected(null); setFairness(game) }
+  const verifyGame = () => {
+    window.history.pushState({}, '', '/provably-fair')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
   return <div className="coinflip" {...pageScope}><CoinflipControls user={user} currency={currency} busy={busy} onCreate={create} sort={sort} onSort={setSort} /><div className="coinflip-games" {...gamesScope}><div className="games-container" {...gamesScope}><div className="games-header" {...gamesScope}><div className="header-title" {...gamesScope}>Active Games: <span {...gamesScope}>{count}</span></div></div><div className="games-content" {...gamesScope}>{loading ? <div className="content-loading" {...gamesScope}>{Array.from({ length: 25 }, (_, index) => <div className="loading-placeholder" key={index} {...gamesScope} />)}</div> : sorted.length ? <div className="content-list" {...gamesScope}><div className="games-list" {...gamesScope}>{sorted.map((game, index) => <AnimatedCoinflipCard style={{ '--animation-delay': `${index * .05}s` }} key={game._id} game={game} user={user} busy={busy} onOpen={open} onBot={(selectedGame) => action(selectedGame, 'bot')} />)}</div></div> : <div className="content-empty" {...gamesScope} />}</div></div></div>
     {selected && !fairness && <ModalAnimation label="Coinflip Game" onClose={close}><CoinflipGameModal game={selected} user={user} busy={busy} onAction={action} onFairness={openFairness} /></ModalAnimation>}
-    {fairness && <ModalAnimation label="Game Fairness" onClose={() => setFairness(null)}><CoinflipFairGame game={fairness} /></ModalAnimation>}
+    {fairness && <ModalAnimation label="Game Fairness" onClose={() => setFairness(null)}><CoinflipFairGame game={fairness} onVerify={verifyGame} /></ModalAnimation>}
   </div>
 }
 

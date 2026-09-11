@@ -494,6 +494,48 @@ async function handleRequest(request, response, env) {
       return true
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/fairness/past-seeds') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page')) || 1))
+      const pageSize = 10
+      const userFilter = `eq.${sessionUser.uuid}`
+      const [diceResult, casesResult] = await Promise.allSettled([
+        supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at', order: 'created_at.desc', limit: '1000' })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ user_uuid: userFilter, status: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
+      ])
+      if (diceResult.status === 'rejected' && casesResult.status === 'rejected') throw diceResult.reason
+      const diceSeeds = diceResult.status === 'fulfilled' ? diceResult.value : []
+      const caseSeeds = casesResult.status === 'fulfilled' ? casesResult.value : []
+      const allSeeds = [
+        ...diceSeeds.map((seed) => ({
+          id: `dice:${seed.uuid}`,
+          clientSeed: seed.client_seed,
+          serverSeed: seed.server_seed,
+          hash: seed.server_seed_hash,
+          nonce: Number(seed.nonce) || 0,
+          completedAt: seed.created_at,
+        })),
+        ...caseSeeds.map((seed) => ({
+          id: `case:${seed.uuid}`,
+          clientSeed: seed.client_seed,
+          serverSeed: seed.server_seed,
+          hash: seed.server_seed_hash,
+          nonce: Number(seed.nonce) || 0,
+          completedAt: seed.completed_at || seed.created_at,
+        })),
+      ].sort((first, second) => new Date(second.completedAt).getTime() - new Date(first.completedAt).getTime())
+      const total = allSeeds.length
+      const totalPages = Math.max(1, Math.ceil(total / pageSize))
+      const selectedPage = Math.min(page, totalPages)
+      const offset = (selectedPage - 1) * pageSize
+      sendJson(response, 200, {
+        seeds: allSeeds.slice(offset, offset + pageSize),
+        pagination: { page: selectedPage, pageSize, total, totalPages },
+      })
+      return true
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/dice/play') {
       const sessionUser = requestSessionUser(request, env)
       if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')

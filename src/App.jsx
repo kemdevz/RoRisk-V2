@@ -23,6 +23,7 @@ import LiveCasino from './Pages/LiveCasino'
 import CasinoGame from './Pages/CasinoGame'
 import Dice from './Pages/Dice'
 import Coinflip from './Pages/Coinflip'
+import ProvablyFair from './Pages/ProvablyFair'
 import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 
@@ -106,7 +107,7 @@ function App() {
       if (!anchor || anchor.target || anchor.hasAttribute('download')) return
 
       const url = new URL(anchor.href, window.location.href)
-      if (url.origin !== window.location.origin || !(/^\/(?:cases|slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases', '/slots', '/live-casino', '/dice', '/coinflip'].includes(url.pathname))) return
+      if (url.origin !== window.location.origin || !(/^\/(?:cases|slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases', '/slots', '/live-casino', '/dice', '/coinflip', '/provably-fair'].includes(url.pathname))) return
 
       event.preventDefault()
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return
@@ -192,7 +193,7 @@ function App() {
 
   const caseMatch = displayedPath.match(/^\/cases\/([a-zA-Z0-9_-]+)$/)
   const casinoMatch = displayedPath.match(/^\/(slots|live-casino)\/([a-zA-Z0-9_.-]+)$/)
-  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases, '/slots': Slots, '/live-casino': LiveCasino, '/dice': Dice, '/coinflip': Coinflip }
+  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases, '/slots': Slots, '/live-casino': LiveCasino, '/dice': Dice, '/coinflip': Coinflip, '/provably-fair': ProvablyFair }
   const Page = caseMatch ? CaseOpen : casinoMatch ? CasinoGame : pages[displayedPath] || Home
   const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
   const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }

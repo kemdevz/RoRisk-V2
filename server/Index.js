@@ -250,6 +250,430 @@ function publicCasinoGame(row) {
   }
 }
 
+function publicMinesGame(row) {
+  const completed = row.state === 'completed'
+  return {
+    uuid: row.uuid,
+    user_uuid: row.user_uuid,
+    roblox_id: row.roblox_id,
+    username: row.username,
+    avatar_headshot: row.avatar_headshot,
+    currency: row.currency,
+    bet_amount: Number(row.bet_amount) || 0,
+    mines_count: Number(row.mines_count) || 1,
+    revealed: Array.isArray(row.revealed) ? row.revealed.map((entry) => ({ tile: Number(entry.tile), value: entry.value })) : [],
+    revealed_tiles: Array.isArray(row.revealed) ? row.revealed.map((entry) => Number(entry.tile)) : [],
+    state: row.state,
+    multiplier: Number(row.multiplier) || 0.9,
+    won: row.won === true,
+    payout_amount: Number(row.payout_amount) || 0,
+    client_seed: row.client_seed,
+    server_seed_hash: row.server_seed_hash,
+    server_seed: completed ? row.server_seed : null,
+    nonce: Number(row.nonce) || 0,
+    deck: completed && Array.isArray(row.deck) ? row.deck.map(String) : null,
+    created_at: row.created_at,
+    completed_at: row.completed_at,
+    updated_at: row.updated_at,
+    level: Number(row.profile?.level) || Number(row.level) || 0,
+    rank: row.profile?.rank || row.rank || 'user',
+    method: 'mines',
+  }
+}
+
+function createMinesDeck(serverSeed, clientSeed, nonce, minesCount) {
+  const rankedTiles = Array.from({ length: 25 }, (_, tile) => ({
+    tile,
+    value: createHash('sha256').update(`${serverSeed}-${nonce}-${clientSeed}-${tile}`).digest('hex'),
+  })).sort((first, second) => first.value.localeCompare(second.value))
+  const mineTiles = new Set(rankedTiles.slice(0, minesCount).map(({ tile }) => tile))
+  return Array.from({ length: 25 }, (_, tile) => mineTiles.has(tile) ? 'mine' : 'coin')
+}
+
+const LIMITED_CATALOG_TTL_MS = 60 * 60 * 1000
+const LIMITED_IMAGE_DATA_CACHE_MAX = 300
+let limitedCatalogCache = null
+let limitedCatalogPromise = null
+const limitedImageCache = new Map()
+const limitedImageDataCache = new Map()
+const limitedImageRequests = new Map()
+const limitedImageUrlRequests = new Map()
+
+async function readLimitedCatalog(env) {
+  const rows = []
+  const pageSize = 1000
+  const readPage = (offset) => supabaseRequest(env, `/rest/v1/rorisk_limited_items?${new URLSearchParams({ active: 'eq.true', select: 'asset_id,name,acronym,rap,value,default_value,image_url', order: 'asset_id.asc' })}`, {
+      headers: { Range: `${offset}-${offset + pageSize - 1}` },
+    })
+  const initialPages = await Promise.all([0, pageSize, pageSize * 2].map(readPage))
+  for (const page of initialPages) rows.push(...(page || []))
+  if ((initialPages[2] || []).length === pageSize) {
+    for (let offset = pageSize * 3; ; offset += pageSize) {
+      const page = await readPage(offset)
+      rows.push(...(page || []))
+      if (!page || page.length < pageSize) break
+    }
+  }
+  return rows
+}
+
+async function fetchLimitedCatalog() {
+  const response = await fetch('https://www.rolimons.com/itemapi/itemdetails', {
+    signal: AbortSignal.timeout(20000),
+    headers: { Accept: 'application/json', 'User-Agent': 'RoRisk/2.0' },
+  })
+  if (!response.ok) throw new Error('The limited item catalogue is currently unavailable.')
+  const payload = await response.json()
+  const updatedAt = new Date().toISOString()
+  return Object.entries(payload.items || {}).map(([assetId, item]) => ({
+    asset_id: Number(assetId),
+    name: String(item?.[0] || `Limited ${assetId}`).slice(0, 200),
+    acronym: String(item?.[1] || '').slice(0, 50),
+    rap: Math.max(0, Number(item?.[2]) || 0),
+    value: Math.max(0, Number(item?.[3]) || 0),
+    default_value: Math.max(0, Number(item?.[4]) || 0),
+    demand: Number(item?.[5]) >= 0 ? Number(item[5]) : null,
+    trend: Number(item?.[6]) >= 0 ? Number(item[6]) : null,
+    projected: Number(item?.[7]) === 1,
+    hyped: Number(item?.[8]) === 1,
+    rare: Number(item?.[9]) === 1,
+    image_url: `/api/limited-items/${assetId}/image`,
+    active: true,
+    catalog_source: 'rolimons',
+    updated_at: updatedAt,
+  })).filter((item) => Number.isSafeInteger(item.asset_id) && item.asset_id > 0)
+}
+
+async function refreshLimitedCatalog(env) {
+  const items = await fetchLimitedCatalog()
+  for (let offset = 0; offset < items.length; offset += 250) {
+    await supabaseRequest(env, '/rest/v1/rorisk_limited_items?on_conflict=asset_id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(items.slice(offset, offset + 250)),
+    })
+  }
+  return items
+}
+
+async function getLimitedCatalog(env) {
+  if (limitedCatalogCache && Date.now() - limitedCatalogCache.loadedAt < LIMITED_CATALOG_TTL_MS) return limitedCatalogCache.items
+  if (!limitedCatalogPromise) {
+    limitedCatalogPromise = (async () => {
+      let items = await readLimitedCatalog(env)
+      if (items.length < 2400) items = await refreshLimitedCatalog(env)
+      limitedCatalogCache = { items, loadedAt: Date.now() }
+      return items
+    })().finally(() => { limitedCatalogPromise = null })
+  }
+  return limitedCatalogPromise
+}
+
+function rememberLimitedImageData(assetId, data) {
+  if (limitedImageDataCache.has(assetId)) limitedImageDataCache.delete(assetId)
+  limitedImageDataCache.set(assetId, data)
+  while (limitedImageDataCache.size > LIMITED_IMAGE_DATA_CACHE_MAX) {
+    limitedImageDataCache.delete(limitedImageDataCache.keys().next().value)
+  }
+}
+
+async function limitedImageData(assetId) {
+  const cached = limitedImageDataCache.get(assetId)
+  if (cached) {
+    limitedImageDataCache.delete(assetId)
+    limitedImageDataCache.set(assetId, cached)
+    return cached
+  }
+  if (limitedImageRequests.has(assetId)) return limitedImageRequests.get(assetId)
+  const request = (async () => {
+    let imageUrl = limitedImageCache.get(assetId)
+    if (!imageUrl && limitedImageUrlRequests.has(assetId)) imageUrl = await limitedImageUrlRequests.get(assetId)
+    if (!imageUrl) {
+      const query = new URLSearchParams({ assetIds: String(assetId), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
+      const thumbnailResponse = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
+      if (!thumbnailResponse.ok) throw new Error('Limited item image unavailable.')
+      const thumbnail = await thumbnailResponse.json()
+      imageUrl = thumbnail.data?.[0]?.imageUrl
+      if (!imageUrl) throw new Error('Limited item image unavailable.')
+      limitedImageCache.set(assetId, imageUrl)
+    }
+    const imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
+    if (!imageResponse.ok) throw new Error('Limited item image unavailable.')
+    const data = { body: Buffer.from(await imageResponse.arrayBuffer()), contentType: imageResponse.headers.get('content-type') || 'image/png' }
+    rememberLimitedImageData(assetId, data)
+    return data
+  })().finally(() => limitedImageRequests.delete(assetId))
+  limitedImageRequests.set(assetId, request)
+  return request
+}
+
+async function sendLimitedImage(response, assetId) {
+  const image = await limitedImageData(assetId)
+  response.statusCode = 200
+  response.setHeader('Content-Type', image.contentType)
+  response.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
+  response.end(image.body)
+}
+
+async function primeLimitedImages(cards, waitForData = false) {
+  const allAssetIds = [...new Set((cards || []).map((card) => Number(card.assetId || card.itemId)).filter((assetId) => Number.isSafeInteger(assetId) && assetId > 0))]
+  const assetIds = [...new Set((cards || []).map((card) => Number(card.assetId || card.itemId)).filter((assetId) => Number.isSafeInteger(assetId) && assetId > 0 && !limitedImageCache.has(assetId)))]
+  if (assetIds.length) {
+    const query = new URLSearchParams({ assetIds: assetIds.join(','), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
+    const batchRequest = (async () => {
+      const response = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
+      if (response.ok) {
+        const payload = await response.json()
+        for (const item of payload.data || []) {
+          if (item?.imageUrl && Number.isSafeInteger(Number(item.targetId))) limitedImageCache.set(Number(item.targetId), item.imageUrl)
+        }
+      }
+    })()
+    for (const assetId of assetIds) limitedImageUrlRequests.set(assetId, batchRequest.then(() => limitedImageCache.get(assetId)))
+    try { await batchRequest } finally {
+      for (const assetId of assetIds) limitedImageUrlRequests.delete(assetId)
+    }
+  }
+  const warming = allAssetIds.map((assetId) => limitedImageData(assetId).catch(() => null))
+  if (waitForData) await Promise.all(warming)
+}
+
+function rouletteMultiplier(ticket) {
+  const value = Math.max(0, Math.min(999999, Number(ticket) || 0)) / 1_000_000
+  return Math.max(100, Math.min(10000, Math.floor(99 / Math.max(0.0099, 1 - value))))
+}
+
+const ROULETTE_TICKET_SPACE = 2 ** 52
+
+function eosRouletteOutcome(serverSeed, eosBlockId) {
+  const hash = createHash('sha256').update(`${serverSeed}-${eosBlockId}`).digest('hex')
+  const ticket = Number.parseInt(hash.slice(0, 13), 16)
+  const normalized = ticket / ROULETTE_TICKET_SPACE
+  const rawMultiplier = Math.floor((0.9 / (1 - normalized)) * 100)
+  const multiplierBps = Number.isFinite(rawMultiplier)
+    ? Math.max(100, Math.min(2_147_483_647, rawMultiplier))
+    : 2_147_483_647
+  return { ticket, multiplierBps }
+}
+
+function rouletteCard(multiplierBps, limitedItems, entropy) {
+  const tier = multiplierBps < 150 ? 0 : multiplierBps < 250 ? 1 : multiplierBps < 500 ? 2 : multiplierBps < 2000 ? 3 : 4
+  const ranges = [[0, 50000], [50000, 250000], [250000, 1000000], [1000000, 10000000], [10000000, Number.POSITIVE_INFINITY]]
+  const [minimum, maximum] = ranges[tier]
+  let candidates = limitedItems.filter((item) => {
+    const value = Number(item.value) || Number(item.default_value) || Number(item.rap) || 0
+    return value >= minimum && value < maximum
+  })
+  if (!candidates.length) candidates = limitedItems
+  const index = Number.parseInt(createHash('sha256').update(String(entropy)).digest('hex').slice(0, 12), 16) % candidates.length
+  const item = candidates[index]
+  return { assetId: Number(item.asset_id), itemId: Number(item.asset_id), name: item.name, image: item.image_url, multiplierBps }
+}
+
+function createRouletteCandidate(limitedItems) {
+  const serverSeed = randomBytes(32).toString('hex')
+  const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+  const digest = createHash('sha512').update(`xroulette:${serverSeed}`).digest('hex')
+  const ticket = Number.parseInt(digest.slice(0, 12), 16) % 1_000_000
+  const result = rouletteCard(rouletteMultiplier(ticket), limitedItems, `${serverSeed}:winner`)
+  const winningIndex = 32
+  const reel = Array.from({ length: 40 }, (_, index) => {
+    const reelTicket = Number.parseInt(createHash('sha256').update(`${serverSeed}:${index}`).digest('hex').slice(0, 12), 16) % 1_000_000
+    return rouletteCard(rouletteMultiplier(reelTicket), limitedItems, `${serverSeed}:${index}:item`)
+  })
+  reel[winningIndex] = { ...result, isWinner: true }
+  return { reel, winningIndex, result, serverSeed, serverSeedHash, ticket }
+}
+
+function finalizeRouletteCandidate(row, limitedItems, eosBlockId) {
+  const serverSeed = String(row.server_seed)
+  const { ticket, multiplierBps } = eosRouletteOutcome(serverSeed, eosBlockId)
+  const result = rouletteCard(multiplierBps, limitedItems, `${serverSeed}:${eosBlockId}:winner`)
+  const winningIndex = Number(row.winning_index) || 32
+  const reel = Array.isArray(row.reel) ? row.reel.map((card) => ({ ...card, isWinner: undefined })) : []
+  reel[winningIndex] = { ...result, isWinner: true, fairTicket: ticket }
+  return { reel, winningIndex, result, ticket }
+}
+
+function publicRouletteGame(row) {
+  const complete = row.state === 'COMPLETE'
+  const revealResult = ['ROLLING', 'SETTLING', 'COMPLETE'].includes(row.state)
+  const winningCard = Array.isArray(row.reel) ? row.reel[Number(row.winning_index) || 0] : null
+  const resultAssetId = Number(row.result_asset_id) || Number(winningCard?.assetId) || Number(winningCard?.itemId) || null
+  return {
+    _id: row.uuid,
+    uuid: row.uuid,
+    state: row.state,
+    reel: Array.isArray(row.reel) ? row.reel.map((card) => revealResult ? card : ({ ...card, isWinner: undefined })) : [],
+    result: revealResult ? {
+      name: row.result_name,
+      image: row.result_image,
+      assetId: resultAssetId,
+      itemId: resultAssetId,
+      multiplierBps: Number(row.result_multiplier_bps) || 100,
+      winningIndex: Number(row.winning_index) || 0,
+    } : null,
+    totals: {
+      betCount: Number(row.bet_count) || 0,
+      wagered: Number(row.wagered_amount) || 0,
+      paid: Number(row.paid_amount) || 0,
+    },
+    fair: {
+      serverSeedHash: row.server_seed_hash,
+      serverSeed: complete ? row.server_seed : null,
+      ticket: complete ? Number(winningCard?.fairTicket ?? row.ticket) : null,
+      eosBlockId: row.eos_block_id,
+      eosBlockNumber: row.eos_block_number == null ? null : Number(row.eos_block_number),
+    },
+    bettingOpensAt: row.betting_opens_at,
+    bettingClosesAt: row.betting_closes_at,
+    rollingStartedAt: row.rolling_started_at,
+    rollingEndsAt: row.rolling_ends_at,
+    settlingEndsAt: row.settling_ends_at,
+    createdAt: row.betting_opens_at || row.created_at,
+    completedAt: row.completed_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function publicRouletteBets(row) {
+  return (Array.isArray(row?.bets) ? [...row.bets] : []).sort((first, second) => new Date(second.placed_at).getTime() - new Date(first.placed_at).getTime())
+}
+
+const rouletteFinalizations = new Map()
+const rouletteTransitionTimers = new Map()
+
+function scheduleRouletteTransition(env, row) {
+  if (!row?.uuid || row.state !== 'BETTING_OPEN' || rouletteTransitionTimers.has(row.uuid)) return
+  const delay = Math.max(0, new Date(row.betting_closes_at).getTime() - Date.now())
+  const timer = setTimeout(() => {
+    rouletteTransitionTimers.delete(row.uuid)
+    const lockedAt = new Date().toISOString()
+    broadcastRealtime({
+      type: 'rouletteState',
+      game: publicRouletteGame({ ...row, state: 'BETTING_LOCKED', updated_at: lockedAt }),
+      serverTime: lockedAt,
+    })
+    let publishedState = 'BETTING_LOCKED'
+    const publishAuthoritativeState = async () => {
+      try {
+        const current = await syncRouletteRound(env)
+        if (current.state !== publishedState) {
+          publishedState = current.state
+          const serverTime = new Date().toISOString()
+          broadcastRealtime({ type: 'rouletteState', game: publicRouletteGame(current), serverTime })
+        }
+        if (current.state === 'BETTING_LOCKED') {
+          const followup = setTimeout(publishAuthoritativeState, 120)
+          followup.unref?.()
+        }
+      } catch {
+        const followup = setTimeout(publishAuthoritativeState, 250)
+        followup.unref?.()
+      }
+    }
+    void publishAuthoritativeState()
+  }, delay)
+  timer.unref?.()
+  rouletteTransitionTimers.set(row.uuid, timer)
+}
+
+async function beginRouletteFinalization(env, row, limitedItems) {
+  let heldRow = row
+  if (!rouletteFinalizations.has(row.uuid)) {
+    const holdStartedAt = Date.now()
+    const holdQuery = new URLSearchParams({ uuid: `eq.${row.uuid}`, eos_block_id: 'is.null', state: 'neq.COMPLETE', select: '*' })
+    const held = await supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${holdQuery}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        state: 'BETTING_LOCKED',
+        rolling_started_at: new Date(holdStartedAt + 30_000).toISOString(),
+        rolling_ends_at: new Date(holdStartedAt + 35_000).toISOString(),
+        settling_ends_at: new Date(holdStartedAt + 37_000).toISOString(),
+        updated_at: new Date(holdStartedAt).toISOString(),
+      }),
+    })
+    if (held?.[0]) heldRow = held[0]
+    if (rouletteFinalizations.has(row.uuid)) return { ...heldRow, state: 'BETTING_LOCKED' }
+    const finalization = (async () => {
+      const reservedBlockNumber = Number(heldRow.eos_block_number)
+      const eos = Number.isSafeInteger(reservedBlockNumber) && reservedBlockNumber > 0
+        ? await eosBlockByNumber(env, reservedBlockNumber, true)
+        : await latestEosBlock(env)
+      const selectedQuery = new URLSearchParams({ uuid: `eq.${heldRow.uuid}`, eos_block_id: 'is.null', state: 'eq.BETTING_LOCKED', select: '*' })
+      const selected = await supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${selectedQuery}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ eos_block_id: eos.blockId, eos_block_number: eos.blockNumber, updated_at: new Date().toISOString() }),
+      })
+      if (selected?.[0]) heldRow = selected[0]
+      const eosSelectedAt = new Date().toISOString()
+      broadcastRealtime({
+        type: 'rouletteState',
+        game: publicRouletteGame({ ...heldRow, state: 'BETTING_LOCKED', eos_block_id: eos.blockId, eos_block_number: eos.blockNumber, updated_at: eosSelectedAt }),
+        serverTime: eosSelectedAt,
+      })
+      const finalized = finalizeRouletteCandidate(heldRow, limitedItems, eos.blockId)
+      await primeLimitedImages([finalized.result], true)
+      const rollingStartedAt = Date.now()
+      const updateQuery = new URLSearchParams({ uuid: `eq.${heldRow.uuid}`, eos_block_id: `eq.${eos.blockId}`, state: 'eq.BETTING_LOCKED', select: '*' })
+      return supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${updateQuery}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          state: 'ROLLING',
+          reel: finalized.reel,
+          winning_index: finalized.winningIndex,
+          result_name: finalized.result.name,
+          result_image: finalized.result.image,
+          result_multiplier_bps: finalized.result.multiplierBps,
+          ticket: finalized.ticket % 1_000_000,
+          eos_block_id: eos.blockId,
+          eos_block_number: eos.blockNumber,
+          rolling_started_at: new Date(rollingStartedAt).toISOString(),
+          rolling_ends_at: new Date(rollingStartedAt + 5_000).toISOString(),
+          settling_ends_at: new Date(rollingStartedAt + 7_000).toISOString(),
+          updated_at: new Date(rollingStartedAt).toISOString(),
+        }),
+      })
+    })().catch(() => null).finally(() => rouletteFinalizations.delete(row.uuid))
+    rouletteFinalizations.set(row.uuid, finalization)
+  }
+  return { ...heldRow, state: 'BETTING_LOCKED' }
+}
+
+async function syncRouletteRound(env) {
+  const limitedItems = await getLimitedCatalog(env)
+  if (!limitedItems.length) throw new Error('The limited item catalogue is empty.')
+  const candidate = createRouletteCandidate(limitedItems)
+  let row = await supabaseRequest(env, '/rest/v1/rpc/sync_rorisk_roulette', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_reel: candidate.reel,
+      p_winning_index: candidate.winningIndex,
+      p_result_name: candidate.result.name,
+      p_result_image: candidate.result.image,
+      p_result_multiplier_bps: candidate.result.multiplierBps,
+      p_server_seed: candidate.serverSeed,
+      p_server_seed_hash: candidate.serverSeedHash,
+      p_ticket: candidate.ticket,
+    }),
+  })
+  if (row.state === 'BETTING_OPEN' && row.eos_block_number == null) {
+    try {
+      row = await reserveRouletteEosBlock(env, row)
+    } catch {
+      // A transient EOS request can fall back to selection during the lock phase.
+    }
+  }
+  if (!row.eos_block_id && ['BETTING_LOCKED', 'ROLLING', 'SETTLING'].includes(row.state)) {
+    row = await beginRouletteFinalization(env, row, limitedItems)
+  }
+  void primeLimitedImages(row.reel).catch(() => {})
+  return row
+}
+
 const COINFLIP_GAME_SELECT = '*,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(rank,level),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(rank,level),winner_profile:rorisk_users!rorisk_coinflip_games_winner_uuid_fkey(rank,level)'
 
 function publicCoinflipGame(row) {
@@ -313,30 +737,65 @@ function publicCoinflipGame(row) {
   }
 }
 
-async function latestEosBlock(env) {
+async function eosPost(env, path, body) {
   const endpoint = String(env.EOS_API_URL || 'https://eos.greymass.com').replace(/\/$/, '')
-  const post = async (path, body) => {
-    const response = await fetch(`${endpoint}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!response.ok) throw new Error('The EOS fairness service is temporarily unavailable.')
-    return response.json()
+  const response = await fetch(`${endpoint}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) throw new Error('The EOS fairness service is temporarily unavailable.')
+  return response.json()
+}
+
+async function eosBlockByNumber(env, blockNumber, waitForBlock = false) {
+  const deadline = Date.now() + (waitForBlock ? 30000 : 0)
+  while (true) {
+    try {
+      let block
+      try {
+        block = await eosPost(env, '/v1/chain/get_block_info', { block_num: blockNumber })
+      } catch {
+        block = await eosPost(env, '/v1/chain/get_block', { block_num_or_id: blockNumber })
+      }
+      const blockId = String(block.id || '').toLowerCase()
+      if (!/^[a-f0-9]{64}$/.test(blockId)) throw new Error('The EOS fairness service returned an invalid block.')
+      return { blockId, blockNumber }
+    } catch (error) {
+      if (!waitForBlock || Date.now() >= deadline) throw error
+      await new Promise((resolve) => setTimeout(resolve, 120))
+    }
   }
-  const info = await post('/v1/chain/get_info', {})
+}
+
+async function reserveRouletteEosBlock(env, row) {
+  const info = await eosPost(env, '/v1/chain/get_info', {})
+  const headBlockNumber = Number(info.head_block_num)
+  const rawHeadTime = String(info.head_block_time || '')
+  const headBlockTime = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(rawHeadTime) ? rawHeadTime : `${rawHeadTime}Z`).getTime()
+  const closesAt = new Date(row.betting_closes_at).getTime()
+  if (!Number.isSafeInteger(headBlockNumber) || !Number.isFinite(headBlockTime) || !Number.isFinite(closesAt)) {
+    throw new Error('The EOS fairness service returned an invalid head block.')
+  }
+  const blocksUntilClose = Math.max(1, Math.ceil((closesAt - headBlockTime) / 500))
+  const targetBlockNumber = headBlockNumber + blocksUntilClose + 1
+  const query = new URLSearchParams({ uuid: `eq.${row.uuid}`, state: 'eq.BETTING_OPEN', eos_block_number: 'is.null', select: '*' })
+  const updated = await supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${query}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ eos_block_number: targetBlockNumber, updated_at: new Date().toISOString() }),
+  })
+  return updated?.[0] || { ...row, eos_block_number: targetBlockNumber }
+}
+
+async function latestEosBlock(env) {
+  const info = await eosPost(env, '/v1/chain/get_info', {})
   const blockNumber = Number(info.last_irreversible_block_num)
   if (!Number.isSafeInteger(blockNumber) || blockNumber < 1) throw new Error('The EOS fairness service returned an invalid block.')
-  let block
-  try {
-    block = await post('/v1/chain/get_block_info', { block_num: blockNumber })
-  } catch {
-    block = await post('/v1/chain/get_block', { block_num_or_id: blockNumber })
-  }
-  const blockId = String(block.id || '').toLowerCase()
-  if (!/^[a-f0-9]{64}$/.test(blockId)) throw new Error('The EOS fairness service returned an invalid block.')
-  return { blockId, blockNumber }
+  const infoBlockId = String(info.last_irreversible_block_id || '').toLowerCase()
+  if (/^[a-f0-9]{64}$/.test(infoBlockId)) return { blockId: infoBlockId, blockNumber }
+  return eosBlockByNumber(env, blockNumber)
 }
 
 async function coinflipGameByUuid(env, uuid) {
@@ -434,11 +893,17 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/casino-images/')) {
       const objectPath = decodeURIComponent(url.pathname.slice('/api/casino-images/'.length))
-      if (!/^(slots|live-casino|dice|coinflip)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
+      if (!/^(slots|live-casino|dice|coinflip|mines|x-roulette)\/[a-zA-Z0-9_.-]+\.(?:avif|jpe?g|png|webp)$/.test(objectPath)) {
         sendJson(response, 404, { error: 'Casino image not found.' })
         return true
       }
       await sendStoredImage(response, env, 'casino-images', objectPath, 'Casino')
+      return true
+    }
+
+    if (request.method === 'GET' && /^\/api\/limited-items\/\d+\/image$/.test(url.pathname)) {
+      const assetId = Number(url.pathname.split('/')[3])
+      await sendLimitedImage(response, assetId)
       return true
     }
 
@@ -459,6 +924,56 @@ async function handleRequest(request, response, env) {
       return true
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/x-roulette/state') {
+      const row = await syncRouletteRound(env)
+      scheduleRouletteTransition(env, row)
+      const historyQuery = new URLSearchParams({ state: 'eq.COMPLETE', select: 'uuid,state,reel,winning_index,result_name,result_image,result_multiplier_bps,bet_count,wagered_amount,paid_amount,server_seed_hash,server_seed,ticket,eos_block_id,eos_block_number,created_at,completed_at,updated_at', order: 'completed_at.desc', limit: '12' })
+      const history = await supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${historyQuery}`)
+      const sessionUser = requestSessionUser(request, env)
+      let user = null
+      if (sessionUser?.uuid && row.state === 'COMPLETE') {
+        const users = await supabaseRequest(env, `/rest/v1/rorisk_users?${new URLSearchParams({ uuid: `eq.${sessionUser.uuid}`, select: '*', limit: '1' })}`)
+        user = users?.[0] || null
+        if (user) startRealtimeSession(request, response, env, user)
+      }
+      sendJson(response, 200, {
+        game: publicRouletteGame(row),
+        bets: publicRouletteBets(row),
+        history: (history || []).map(publicRouletteGame),
+        config: { minAmount: 1, maxAmount: 500000, minMultiplier: 1.01 },
+        maintenance: { active: false, reason: '' },
+        serverTime: new Date().toISOString(),
+        ...(user ? { user } : {}),
+      })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/x-roulette/bet') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      const targetMultiplierBps = Math.round(Number(body.targetMultiplier) * 100)
+      if (!Number.isSafeInteger(amount)) throw new Error('Your entered bet amount is invalid.')
+      if (!Number.isInteger(targetMultiplierBps)) throw new Error('Your entered multiplier is invalid.')
+      const current = await syncRouletteRound(env)
+      const result = await supabaseRequest(env, '/rest/v1/rpc/place_rorisk_roulette_bet', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_game_uuid: current.uuid,
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: String(body.currency || ''),
+          p_target_multiplier_bps: targetMultiplierBps,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicRouletteGame(result.game)
+      broadcastRealtime({ type: 'rouletteBet', game, bet: result.bet })
+      sendJson(response, 200, { ...result, game, bets: publicRouletteBets(result.game) })
+      return true
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/dice/games') {
       const query = new URLSearchParams({
         select: 'uuid,username,avatar_headshot,currency,bet_amount,mode,target_low,target_high,roll,win_chance,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level)',
@@ -472,14 +987,18 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname === '/api/bets') {
       const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))
-      const [diceResult, casesResult, coinflipResult] = await Promise.allSettled([
+      const [diceResult, casesResult, coinflipResult, minesResult, rouletteResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ status: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,wager_amount,payout_amount,created_at,profile:rorisk_users!rorisk_case_openings_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,creator_uuid,creator_roblox_id,creator_username,creator_avatar_headshot,opponent_uuid,opponent_roblox_id,opponent_username,opponent_avatar_headshot,currency,amount,winner_uuid,payout_amount,completed_at,created_at,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(level,rank),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,completed_at,created_at,profile:rorisk_users!rorisk_mines_games_user_uuid_fkey(level,rank)', order: 'completed_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${new URLSearchParams({ state: 'eq.COMPLETE', select: 'uuid,bets,result_multiplier_bps,completed_at,created_at', order: 'completed_at.desc', limit: String(limit) })}`),
       ])
       const diceGames = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseGames = casesResult.status === 'fulfilled' ? casesResult.value : []
       const coinflipGames = coinflipResult.status === 'fulfilled' ? coinflipResult.value : []
+      const minesGames = minesResult.status === 'fulfilled' ? minesResult.value : []
+      const rouletteGames = rouletteResult.status === 'fulfilled' ? rouletteResult.value : []
       const bets = [
         ...diceGames.map(({ profile, ...game }) => ({ ...game, method: 'dice', level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
         ...caseGames.map(({ profile, wager_amount: betAmount, ...game }) => ({ ...game, method: 'cases', bet_amount: betAmount, multiplier: betAmount > 0 ? Number(game.payout_amount) / Number(betAmount) : 0, won: Number(game.payout_amount) >= Number(betAmount), level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
@@ -489,6 +1008,23 @@ async function handleRequest(request, response, env) {
           if (!game.opponent_uuid) return [creator]
           return [creator, { uuid: `${game.uuid}:opponent`, user_uuid: game.opponent_uuid, roblox_id: game.opponent_roblox_id, username: game.opponent_username, avatar_headshot: game.opponent_avatar_headshot, currency: game.currency, bet_amount: game.amount, payout_amount: game.winner_uuid === game.opponent_uuid ? game.payout_amount : 0, multiplier: game.winner_uuid === game.opponent_uuid ? Number(game.payout_amount) / Number(game.amount) : 0, won: game.winner_uuid === game.opponent_uuid, method: 'coinflip', level: Number(game.opponent_profile?.level) || 0, rank: game.opponent_profile?.rank || 'user', created_at: completedAt, updated_at: completedAt }]
         }),
+        ...minesGames.map(({ profile, ...game }) => ({ ...game, method: 'mines', level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.completed_at || game.created_at })),
+        ...rouletteGames.flatMap((game) => (Array.isArray(game.bets) ? game.bets : []).map((bet) => ({
+          uuid: `${game.uuid}:${bet.uuid}`,
+          user_uuid: bet.user_uuid,
+          roblox_id: bet.roblox_id,
+          username: bet.username,
+          avatar_headshot: bet.roblox_avatar_headshot,
+          currency: bet.currency,
+          bet_amount: Number(bet.amount) || 0,
+          payout_amount: Number(bet.payout_amount) || 0,
+          multiplier: bet.won ? Number(bet.target_multiplier_bps) / 100 : 0,
+          won: bet.won === true,
+          method: 'xroulette',
+          level: Number(bet.level) || 0,
+          created_at: game.completed_at || game.created_at,
+          updated_at: game.completed_at || game.created_at,
+        }))),
       ].sort((first, second) => new Date(second.updated_at).getTime() - new Date(first.updated_at).getTime()).slice(0, limit)
       sendJson(response, 200, { games: bets })
       return true
@@ -500,13 +1036,15 @@ async function handleRequest(request, response, env) {
       const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page')) || 1))
       const pageSize = 10
       const userFilter = `eq.${sessionUser.uuid}`
-      const [diceResult, casesResult] = await Promise.allSettled([
+      const [diceResult, casesResult, minesResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ user_uuid: userFilter, status: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ user_uuid: userFilter, state: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
       ])
-      if (diceResult.status === 'rejected' && casesResult.status === 'rejected') throw diceResult.reason
+      if (diceResult.status === 'rejected' && casesResult.status === 'rejected' && minesResult.status === 'rejected') throw diceResult.reason
       const diceSeeds = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseSeeds = casesResult.status === 'fulfilled' ? casesResult.value : []
+      const minesSeeds = minesResult.status === 'fulfilled' ? minesResult.value : []
       const allSeeds = [
         ...diceSeeds.map((seed) => ({
           id: `dice:${seed.uuid}`,
@@ -518,6 +1056,14 @@ async function handleRequest(request, response, env) {
         })),
         ...caseSeeds.map((seed) => ({
           id: `case:${seed.uuid}`,
+          clientSeed: seed.client_seed,
+          serverSeed: seed.server_seed,
+          hash: seed.server_seed_hash,
+          nonce: Number(seed.nonce) || 0,
+          completedAt: seed.completed_at || seed.created_at,
+        })),
+        ...minesSeeds.map((seed) => ({
+          id: `mines:${seed.uuid}`,
           clientSeed: seed.client_seed,
           serverSeed: seed.server_seed,
           hash: seed.server_seed_hash,
@@ -564,6 +1110,77 @@ async function handleRequest(request, response, env) {
       if (result?.game) result.game.level = Number(result.user?.level) || 0
       if (result?.game) broadcastRealtime({ type: 'diceBet', game: result.game })
       sendJson(response, 200, result)
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/mines/current') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) {
+        sendJson(response, 200, { game: null })
+        return true
+      }
+      const query = new URLSearchParams({
+        user_uuid: `eq.${sessionUser.uuid}`,
+        state: 'in.(created,running)',
+        select: '*',
+        order: 'created_at.desc',
+        limit: '1',
+      })
+      const games = await supabaseRequest(env, `/rest/v1/rorisk_mines_games?${query}`)
+      sendJson(response, 200, { game: games?.[0] ? publicMinesGame(games[0]) : null })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/mines/start') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      const minesCount = Math.trunc(Number(body.minesCount))
+      const nonce = Math.max(0, Math.trunc(Number(body.nonce)) || 0)
+      if (!Number.isSafeInteger(amount)) throw new Error('Your entered bet amount is invalid.')
+      if (!Number.isInteger(minesCount)) throw new Error('Your entered mines count is invalid.')
+      const clientSeed = String(body.clientSeed || sessionUser.uuid).slice(0, 128)
+      const serverSeed = randomBytes(24).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const deck = createMinesDeck(serverSeed, clientSeed, nonce, minesCount)
+      const result = await supabaseRequest(env, '/rest/v1/rpc/start_rorisk_mines', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: String(body.currency || ''),
+          p_mines_count: minesCount,
+          p_deck: deck,
+          p_client_seed: clientSeed,
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+          p_nonce: nonce,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      sendJson(response, 200, { ...result, game: publicMinesGame({ ...result.game, level: result.user?.level, rank: result.user?.rank }) })
+      return true
+    }
+
+    const minesActionRoute = url.pathname.match(/^\/api\/mines\/([a-fA-F0-9-]+)\/(reveal|cashout)$/)
+    if (request.method === 'POST' && minesActionRoute) {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const action = minesActionRoute[2]
+      const tile = Math.trunc(Number(body.tile))
+      if (action === 'reveal' && (!Number.isInteger(tile) || tile < 0 || tile > 24)) throw new Error('The selected tile is invalid.')
+      const result = await supabaseRequest(env, `/rest/v1/rpc/${action === 'reveal' ? 'reveal_rorisk_mines' : 'cashout_rorisk_mines'}`, {
+        method: 'POST',
+        body: JSON.stringify(action === 'reveal'
+          ? { p_game_uuid: minesActionRoute[1], p_user_uuid: sessionUser.uuid, p_tile: tile }
+          : { p_game_uuid: minesActionRoute[1], p_user_uuid: sessionUser.uuid }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicMinesGame({ ...result.game, level: result.user?.level, rank: result.user?.rank })
+      if (game.state === 'completed') broadcastRealtime({ type: 'minesBet', game })
+      sendJson(response, 200, { ...result, game })
       return true
     }
 
@@ -847,7 +1464,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip|mines|x-roulette)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance

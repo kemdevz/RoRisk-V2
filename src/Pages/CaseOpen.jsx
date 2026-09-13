@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import confetti from 'canvas-confetti'
 import SiteIcon from '../components/Icons'
 import FairSeedModal from '../components/FairSeedModal'
 import ModalAnimation from '../components/ModalAnimation'
@@ -90,29 +91,6 @@ function createReel(items, winner = null, seedValue = Date.now(), baitSeedValue 
     }
   }
   return reel
-}
-
-function waitForReelImages(container, timeout = 2000) {
-  const images = [...(container?.querySelectorAll('.reel-element img') || [])]
-  if (!images.length || images.every((image) => image.complete && image.naturalHeight > 0)) return Promise.resolve()
-  return new Promise((resolve) => {
-    let finished = false
-    let loaded = images.filter((image) => image.complete && image.naturalHeight > 0).length
-    const finish = () => {
-      if (finished) return
-      finished = true
-      resolve()
-    }
-    const onLoad = () => {
-      loaded += 1
-      if (loaded >= images.length) finish()
-    }
-    images.filter((image) => !image.complete || image.naturalHeight === 0).forEach((image) => {
-      image.addEventListener('load', onLoad, { once: true })
-      image.addEventListener('error', finish, { once: true })
-    })
-    window.setTimeout(finish, timeout)
-  })
 }
 
 function reelGeometry(spinner, multi) {
@@ -255,52 +233,56 @@ function FastIcon() {
 }
 
 const confettiColors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3', '#FF1493', '#00CED1', '#FFD700', '#FF69B4', '#00FF7F']
+const activeConfetti = new WeakMap()
 
-function launchConfetti(canvas) {
-  if (!canvas) return
-  canvas.classList.add('temp-confetti-canvas')
-  const bounds = canvas.getBoundingClientRect()
-  const ratio = window.devicePixelRatio || 1
-  canvas.width = Math.max(1, Math.floor(bounds.width * ratio))
-  canvas.height = Math.max(1, Math.floor(bounds.height * ratio))
-  const context = canvas.getContext('2d')
-  if (!context) return
-  context.setTransform(ratio, 0, 0, ratio, 0, 0)
-  const particles = Array.from({ length: 100 }, (_, index) => ({
-    x: bounds.width / 2,
-    y: bounds.height / 2,
-    vx: (Math.random() - 0.5) * 9,
-    vy: -3 - Math.random() * 8,
-    gravity: 0.12 + Math.random() * 0.08,
-    rotation: Math.random() * Math.PI,
-    spin: (Math.random() - 0.5) * 0.3,
-    size: 4 + Math.random() * 5,
-    color: confettiColors[index % confettiColors.length],
-  }))
-  const started = performance.now()
-  const draw = (now) => {
-    const progress = (now - started) / 3000
-    context.clearRect(0, 0, bounds.width, bounds.height)
-    for (const particle of particles) {
-      particle.x += particle.vx
-      particle.y += particle.vy
-      particle.vy += particle.gravity
-      particle.rotation += particle.spin
-      context.save()
-      context.globalAlpha = Math.max(0, 1 - Math.max(0, progress - 0.4) / 0.6)
-      context.translate(particle.x, particle.y)
-      context.rotate(particle.rotation)
-      context.fillStyle = particle.color
-      context.fillRect(-particle.size / 2, -particle.size / 4, particle.size, particle.size / 2)
-      context.restore()
-    }
-    if (progress < 1) window.requestAnimationFrame(draw)
-    else {
-      context.clearRect(0, 0, bounds.width, bounds.height)
-      canvas.classList.remove('temp-confetti-canvas')
-    }
+function removeConfettiCanvas(canvas) {
+  const active = activeConfetti.get(canvas)
+  if (active) {
+    window.clearTimeout(active.fadeTimer)
+    window.clearTimeout(active.removeTimer)
+    active.instance.reset()
+    activeConfetti.delete(canvas)
   }
-  window.requestAnimationFrame(draw)
+  canvas.remove()
+}
+
+function clearConfettiCanvases(root) {
+  root?.querySelectorAll('.temp-confetti-canvas').forEach(removeConfettiCanvas)
+}
+
+function launchConfetti(anchor, index) {
+  const parent = anchor?.parentNode
+  if (!parent) return
+
+  const canvas = document.createElement('canvas')
+  const bounds = parent.getBoundingClientRect()
+  canvas.className = 'temp-confetti-canvas'
+  canvas.id = `cases-confetti-${index + 1}-${Date.now()}`
+  canvas.width = Math.max(1, Math.round(bounds.width))
+  canvas.height = Math.max(1, Math.round(bounds.height))
+  canvas.setAttribute('aria-hidden', 'true')
+  Object.assign(canvas.style, {
+    position: 'absolute',
+    top: '0',
+    left: '0',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: '10',
+    opacity: '1',
+    transition: 'opacity 1.8s ease-out',
+  })
+  parent.appendChild(canvas)
+
+  const instance = confetti.create(canvas)
+  const active = { instance, fadeTimer: null, removeTimer: null }
+  activeConfetti.set(canvas, active)
+  instance({ particleCount: 100, spread: 70, origin: { x: 0.5, y: 0.5 }, colors: confettiColors, scalar: 1.2 })
+  active.fadeTimer = window.setTimeout(() => {
+    if (!canvas.isConnected) return
+    canvas.style.opacity = '0'
+    active.removeTimer = window.setTimeout(() => removeConfettiCanvas(canvas), 1800)
+  }, 3000)
 }
 
 function ItemCard({ item, items }) {
@@ -342,7 +324,10 @@ function CaseOpen({ caseId, user, onSignIn }) {
     timers.current = []
   }, [])
 
-  useEffect(() => () => clearTimers(), [clearTimers])
+  useEffect(() => () => {
+    clearTimers()
+    clearConfettiCanvases(spinnerRef.current)
+  }, [clearTimers])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -357,6 +342,15 @@ function CaseOpen({ caseId, user, onSignIn }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [caseId])
+
+  useEffect(() => {
+    const images = [...new Set((caseData?.items || []).map((item) => item?.image).filter(Boolean))]
+    images.forEach((source) => {
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = source
+    })
+  }, [caseData])
 
   const positionReels = useCallback((targetIndex = 20, transition = 'none', jitters = []) => {
     const spinner = spinnerRef.current
@@ -406,25 +400,23 @@ function CaseOpen({ caseId, user, onSignIn }) {
     if (!running) return undefined
     let animationFrame
     let previous = Array(count).fill(20)
+    const spinner = spinnerRef.current
+    const multi = count > 1
+    const geometry = reelGeometry(spinner, multi)
+    const wheels = [...(spinner?.querySelectorAll('.inner-wheel') || [])]
+    if (!geometry || !wheels.length) return undefined
     const track = () => {
-      const spinner = spinnerRef.current
-      if (!spinner) return
-      const next = [...spinner.querySelectorAll('.inner-wheel')].map((wheel) => {
-        const bounds = wheel.getBoundingClientRect()
-        const multi = count > 1
-        const center = multi ? bounds.top + bounds.height / 2 : bounds.left + bounds.width / 2
-        const elements = wheel.querySelectorAll('.reel-element')
-        if (elements.length < 2) return 20
-        const firstBounds = elements[0].getBoundingClientRect()
-        const secondBounds = elements[1].getBoundingClientRect()
-        const firstCenter = multi ? firstBounds.top + firstBounds.height / 2 : firstBounds.left + firstBounds.width / 2
-        const secondCenter = multi ? secondBounds.top + secondBounds.height / 2 : secondBounds.left + secondBounds.width / 2
-        const spacing = Math.abs(secondCenter - firstCenter) || 1
-        return Math.max(0, Math.min(elements.length - 1, Math.round((center - firstCenter) / spacing)))
+      const next = wheels.map((wheel) => {
+        const reel = wheel.querySelector('.cases-reel')
+        if (!reel) return 20
+        const matrix = new DOMMatrixReadOnly(window.getComputedStyle(reel).transform)
+        const offset = multi ? matrix.m42 : matrix.m41
+        const position = 20 + (geometry.initialOffset - offset) / geometry.itemSpacing
+        return Math.max(0, Math.min(79, Math.round(position)))
       })
       if (next.some((position, index) => position !== previous[index])) {
         next.forEach((position, index) => {
-          const wheel = spinner.querySelectorAll('.inner-wheel')[index]
+          const wheel = wheels[index]
           wheel?.querySelector('.element-active')?.classList.remove('element-active')
           wheel?.querySelectorAll('.reel-element')[position]?.classList.add('element-active')
         })
@@ -441,6 +433,8 @@ function CaseOpen({ caseId, user, onSignIn }) {
     const outcomes = Array.isArray(opening?.outcomes) ? opening.outcomes : []
     if (outcomes.length !== count) throw new Error('The case result was incomplete.')
     clearTimers()
+    clearConfettiCanvases(spinnerRef.current)
+    positionReels(20)
     setRunning(true)
     setWinnerVisible(false)
     const openingId = opening.uuid || opening._id || Date.now()
@@ -453,10 +447,6 @@ function CaseOpen({ caseId, user, onSignIn }) {
     )))
 
     await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
-    positionReels(20)
-    await waitForReelImages(spinnerRef.current?.querySelector('.inner-wheel'))
-    await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
-    await new Promise((resolve) => window.setTimeout(resolve, 100))
 
     const updatedAt = opening.updatedAt || opening.updated_at || opening.completed_at || opening.created_at
     const normalDuration = updatedAt
@@ -486,7 +476,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
           const sound = highTier && Number(outcome.item?.price) > caseData.rocoinAmount ? 'unboxBig' : rarity === 'legendary' ? 'unboxRare' : 'unbox'
           playSound(sound)
           if (chanceNumber(outcome.item) < 15 && Number(outcome.item?.price) >= caseData.rocoinAmount) {
-            launchConfetti(spinnerRef.current?.querySelectorAll('.confetti-canvas')[index])
+            launchConfetti(spinnerRef.current?.querySelectorAll('.confetti-canvas')[index], index)
           }
         }, 300))
       }, duration * 1000 + 200))

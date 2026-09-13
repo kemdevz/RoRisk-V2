@@ -4,6 +4,46 @@ export const SOUND_PATHS = Object.freeze({
 
 const players = new Map()
 const lastPlayedAt = new Map()
+const blockedPlayers = new Set()
+let unlockListenersInstalled = false
+
+function installUnlockListeners() {
+  if (unlockListenersInstalled || typeof window === 'undefined') return
+  unlockListenersInstalled = true
+  const retryBlocked = () => {
+    for (const player of blockedPlayers) {
+      player.play().then(() => blockedPlayers.delete(player)).catch(() => {})
+    }
+  }
+  window.addEventListener('pointerdown', retryBlocked, true)
+  window.addEventListener('keydown', retryBlocked, true)
+}
+
+function soundPlayer(name) {
+  const path = SOUND_PATHS[name]
+  if (!path) return null
+  let player = players.get(name)
+  if (!player) {
+    player = new Audio(path)
+    player.preload = 'auto'
+    players.set(name, player)
+  }
+  return player
+}
+
+export function preloadSound(name) {
+  const player = soundPlayer(name)
+  player?.load()
+  return player
+}
+
+export function stopSound(name) {
+  const player = players.get(name)
+  if (!player) return
+  blockedPlayers.delete(player)
+  player.pause()
+  player.currentTime = 0
+}
 
 export function getSoundVolume() {
   const saved = Number(window.localStorage.getItem('rorisk_sound_volume') ?? window.localStorage.getItem('soundVolume') ?? 1)
@@ -18,20 +58,15 @@ export function setSoundVolume(volume) {
 }
 
 export function playSound(name, { restart = true, volume = 1, dedupeMs = 0 } = {}) {
-  const path = SOUND_PATHS[name]
   const masterVolume = getSoundVolume()
-  if (!path || masterVolume <= 0) return null
-  let player = players.get(name)
+  if (!SOUND_PATHS[name] || masterVolume <= 0) return null
+  installUnlockListeners()
+  const player = soundPlayer(name)
   const now = performance.now()
   if (dedupeMs > 0 && now - (lastPlayedAt.get(name) ?? Number.NEGATIVE_INFINITY) < dedupeMs) return player || null
   lastPlayedAt.set(name, now)
-  if (!player) {
-    player = new Audio(path)
-    player.preload = 'auto'
-    players.set(name, player)
-  }
   player.volume = Math.min(1, masterVolume * volume)
   if (restart) player.currentTime = 0
-  player.play().catch(() => {})
+  player.play().then(() => blockedPlayers.delete(player)).catch(() => blockedPlayers.add(player))
   return player
 }

@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { attachRealtimeServer, broadcastRealtime, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000
@@ -175,6 +175,85 @@ async function supabaseRequest(env, path, options = {}) {
   throw lastError || new Error('Supabase request failed.')
 }
 
+const COINS_PER_USD = 100
+const OXAPAY_API_URL = 'https://api.oxapay.com/v1'
+
+async function oxaPayRequest(path, apiKeyName, apiKey, options = {}) {
+  if (!apiKey) throw new Error('Crypto payments are not configured on this server.')
+  const upstream = await fetch(`${OXAPAY_API_URL}${path}`, {
+    ...options,
+    signal: AbortSignal.timeout(15000),
+    headers: {
+      [apiKeyName]: apiKey,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+  const payload = await upstream.json().catch(() => null)
+  if (!upstream.ok || Number(payload?.status) >= 400 || payload?.error?.message) {
+    throw new Error(payload?.error?.message || payload?.message || 'The payment provider rejected this request.')
+  }
+  return payload?.data || payload
+}
+
+function paymentCallbackUrl(request, env, kind) {
+  const configured = String(env.OXAPAY_CALLBACK_BASE_URL || '').trim().replace(/\/$/, '')
+  const forwardedProtocol = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+  const inferred = forwardedProtocol === 'https' && request.headers.host ? `https://${request.headers.host}` : ''
+  const base = configured || inferred
+  if (!base || !/^https:\/\//i.test(base) || /https:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(base)) {
+    throw new Error('Set OXAPAY_CALLBACK_BASE_URL to the public HTTPS URL of this site.')
+  }
+  return `${base}/api/payments/oxapay/${kind}-webhook`
+}
+
+function validOxaSignature(rawBody, suppliedSignature, secret) {
+  if (!secret || !suppliedSignature) return false
+  const expected = createHmac('sha512', secret).update(rawBody).digest('hex')
+  const supplied = String(suppliedSignature).trim().toLowerCase()
+  const expectedBuffer = Buffer.from(expected)
+  const suppliedBuffer = Buffer.from(supplied)
+  return suppliedBuffer.length === expectedBuffer.length && timingSafeEqual(suppliedBuffer, expectedBuffer)
+}
+
+async function currentCryptoQuote(currency, network) {
+  const symbol = String(currency || '').trim().toUpperCase()
+  if (!/^[A-Z0-9]{2,12}$/.test(symbol)) throw new Error('The selected cryptocurrency is invalid.')
+  const [pricesResponse, currenciesResponse] = await Promise.all([
+    fetch(`${OXAPAY_API_URL}/common/prices`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
+  ])
+  if (!pricesResponse.ok || !currenciesResponse.ok) throw new Error('Unable to retrieve the current cryptocurrency quote.')
+  const prices = await pricesResponse.json()
+  const currencies = await currenciesResponse.json()
+  const price = Number(prices?.data?.[symbol])
+  const currencyData = currencies?.data?.[symbol]
+  if (!currencyData?.status || !Number.isFinite(price) || price <= 0) throw new Error('The selected cryptocurrency is currently unavailable.')
+  const networks = Object.values(currencyData.networks || {})
+  const requestedNetwork = String(network || '').trim().toLowerCase()
+  const networkData = networks.find((entry) => [entry.network, entry.name, ...(entry.keys || [])].some((key) => String(key).toLowerCase() === requestedNetwork)) || (networks.length === 1 ? networks[0] : null)
+  if (!networkData) throw new Error('Select a valid network for this cryptocurrency.')
+  return { symbol, price, network: networkData.network, networkData }
+}
+
+async function readRawBody(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) throw new Error('Request body is too large.')
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
+function sendText(response, status, value) {
+  response.statusCode = status
+  response.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  response.setHeader('Cache-Control', 'no-store')
+  response.end(value)
+}
+
 function requestSessionUser(request, env) {
   if (!env.RORISK_USER_SECRET) return null
   const cookies = Object.fromEntries(String(request.headers.cookie || '').split(';').map((part) => {
@@ -212,12 +291,32 @@ async function sendStoredImage(response, env, bucket, objectPath, label) {
   sendJson(response, lastStatus === 404 ? 404 : 503, { error: `${label} image unavailable.` })
 }
 
-function publicCase(row, includeItems = false) {
+function selectedCurrency(value) {
+  return String(value || '').toLowerCase() === 'coins' ? 'coins' : 'rocoins'
+}
+
+function baseCoinPair(source, fallback = 0) {
+  const explicitCoins = Number(source?.coin_price ?? source?.coinPrice ?? source?.coin_value ?? source?.coinValue)
+  const explicitRocoins = Number(source?.rocoin_price ?? source?.rocoinPrice ?? source?.rocoin_value ?? source?.rocoinValue)
+  const coins = Math.max(0, Math.trunc(Number.isFinite(explicitCoins) ? explicitCoins : fallback))
+  const rocoins = Math.max(0, Math.trunc(Number.isFinite(explicitRocoins) ? explicitRocoins : coins * 5))
+  return { coins, rocoins }
+}
+
+function publicCase(row, includeItems = false, currency = 'rocoins') {
+  const requestedCurrency = selectedCurrency(currency)
+  const legacyBaseAmount = Number(row.rocoin_amount ?? row.amount) || 0
+  const amounts = row.coin_amount == null
+    ? baseCoinPair({}, legacyBaseAmount)
+    : baseCoinPair({ coin_price: row.coin_amount, rocoin_price: row.rocoin_amount }, legacyBaseAmount)
   const data = {
     caseId: row.case_id,
     name: row.name,
     slug: row.slug,
-    rocoinAmount: Number(row.rocoin_amount ?? row.amount) || 0,
+    amount: amounts[requestedCurrency],
+    coinAmount: amounts.coins,
+    rocoinAmount: amounts.rocoins,
+    currency: requestedCurrency,
     type: row.type,
     categories: row.categories,
     levelMin: row.level_min,
@@ -225,13 +324,18 @@ function publicCase(row, includeItems = false) {
     sortOrder: row.sort_order,
   }
   if (includeItems) {
-    data.items = (Array.isArray(row.items) ? row.items : []).map((item, index) => ({
-      ...item,
-      index: Number(item.index) || index + 1,
-      price: Math.max(0, Number(item.price ?? item.amount) || 0),
-      chance: String(item.chance ?? `${Number(item.tickets || 0) / 1000}%`),
-      rarity: item.rarity == null || String(item.rarity).trim() === '' ? null : String(item.rarity).toLowerCase(),
-    }))
+    data.items = (Array.isArray(row.items) ? row.items : []).map((item, index) => {
+      const prices = baseCoinPair(item, item.price ?? item.amount)
+      return {
+        ...item,
+        index: Number(item.index) || index + 1,
+        price: prices[requestedCurrency],
+        coinPrice: prices.coins,
+        rocoinPrice: prices.rocoins,
+        chance: String(item.chance ?? `${Number(item.tickets || 0) / 1000}%`),
+        rarity: item.rarity == null || String(item.rarity).trim() === '' ? null : String(item.rarity).toLowerCase(),
+      }
+    })
   }
   return data
 }
@@ -281,6 +385,78 @@ function publicMinesGame(row) {
   }
 }
 
+function publicUpgraderGame(row) {
+  return {
+    uuid: row.uuid,
+    user_uuid: row.user_uuid,
+    roblox_id: row.roblox_id,
+    username: row.username,
+    avatar_headshot: row.avatar_headshot,
+    currency: row.currency,
+    bet_amount: Number(row.bet_amount) || 0,
+    target_asset_id: Number(row.target_asset_id) || 0,
+    target_name: row.target_name,
+    target_image: row.target_image,
+    target_value: Number(row.target_value) || 0,
+    multiplier_bps: Number(row.multiplier_bps) || 0,
+    multiplier: (Number(row.multiplier_bps) || 0) / 100,
+    mode: row.mode,
+    range_start: Number(row.range_start) || 0,
+    win_threshold: Number(row.win_threshold) || 0,
+    outcome: Number(row.outcome) || 0,
+    won: row.won === true,
+    isWin: row.won === true,
+    payout_amount: Number(row.payout_amount) || 0,
+    client_seed: row.client_seed,
+    server_seed_hash: row.server_seed_hash,
+    server_seed: row.server_seed,
+    nonce: Number(row.nonce) || 0,
+    created_at: row.created_at,
+    completed_at: row.completed_at,
+    level: Number(row.profile?.level) || Number(row.level) || 0,
+    rank: row.profile?.rank || row.rank || 'user',
+    method: 'upgrader',
+  }
+}
+
+function limitedItemValue(item, currency = 'rocoins') {
+  const marketValue = Math.trunc(Number(item?.value) || 0)
+  const defaultValue = Math.trunc(Number(item?.default_value) || 0)
+  const rap = Math.trunc(Number(item?.rap) || 0)
+  const rawAmount = Math.max(0, marketValue > 0 ? marketValue : defaultValue > 0 ? defaultValue : rap)
+  const exactProductionValues = item?.catalog_source === 'rorisk-production'
+  const productionValue = Math.floor(rawAmount / 1000)
+  const storedValue = exactProductionValues
+    ? Math.max(0, Math.trunc(Number(item?.coin_value ?? item?.rocoin_value) || productionValue))
+    : productionValue
+  const values = { coins: storedValue, rocoins: storedValue }
+  return values[selectedCurrency(currency)]
+}
+
+function publicUpgraderItem(item, currency = 'rocoins') {
+  const requestedCurrency = selectedCurrency(currency)
+  const value = limitedItemValue(item, requestedCurrency)
+  const coinValue = limitedItemValue(item, 'coins')
+  const rocoinValue = limitedItemValue(item, 'rocoins')
+  const assetId = Number(item.asset_id)
+  return {
+    id: String(assetId),
+    _id: String(assetId),
+    assetId,
+    targetId: assetId,
+    name: String(item.name || item.acronym || `Limited ${assetId}`),
+    acronym: String(item.acronym || ''),
+    image: `/api/limited-items/${assetId}/image`,
+    imageUrl: `/api/limited-items/${assetId}/image`,
+    currency: requestedCurrency,
+    coinValue,
+    rocoinValue,
+    value,
+    amount: value * 1000,
+    amountFixed: value * 1000,
+  }
+}
+
 function createMinesDeck(serverSeed, clientSeed, nonce, minesCount) {
   const rankedTiles = Array.from({ length: 25 }, (_, tile) => ({
     tile,
@@ -302,7 +478,7 @@ const limitedImageUrlRequests = new Map()
 async function readLimitedCatalog(env) {
   const rows = []
   const pageSize = 1000
-  const readPage = (offset) => supabaseRequest(env, `/rest/v1/rorisk_limited_items?${new URLSearchParams({ active: 'eq.true', select: 'asset_id,name,acronym,rap,value,default_value,image_url', order: 'asset_id.asc' })}`, {
+  const readPage = (offset) => supabaseRequest(env, `/rest/v1/rorisk_limited_items?${new URLSearchParams({ active: 'eq.true', select: '*', order: 'asset_id.asc' })}`, {
       headers: { Range: `${offset}-${offset + pageSize - 1}` },
     })
   const initialPages = await Promise.all([0, pageSize, pageSize * 2].map(readPage))
@@ -325,23 +501,28 @@ async function fetchLimitedCatalog() {
   if (!response.ok) throw new Error('The limited item catalogue is currently unavailable.')
   const payload = await response.json()
   const updatedAt = new Date().toISOString()
-  return Object.entries(payload.items || {}).map(([assetId, item]) => ({
-    asset_id: Number(assetId),
-    name: String(item?.[0] || `Limited ${assetId}`).slice(0, 200),
-    acronym: String(item?.[1] || '').slice(0, 50),
-    rap: Math.max(0, Number(item?.[2]) || 0),
-    value: Math.max(0, Number(item?.[3]) || 0),
-    default_value: Math.max(0, Number(item?.[4]) || 0),
-    demand: Number(item?.[5]) >= 0 ? Number(item[5]) : null,
-    trend: Number(item?.[6]) >= 0 ? Number(item[6]) : null,
-    projected: Number(item?.[7]) === 1,
-    hyped: Number(item?.[8]) === 1,
-    rare: Number(item?.[9]) === 1,
-    image_url: `/api/limited-items/${assetId}/image`,
-    active: true,
-    catalog_source: 'rolimons',
-    updated_at: updatedAt,
-  })).filter((item) => Number.isSafeInteger(item.asset_id) && item.asset_id > 0)
+  return Object.entries(payload.items || {}).map(([assetId, item]) => {
+    const rawAmount = Math.max(0, Number(item?.[3]) || Number(item?.[4]) || Number(item?.[2]) || 0)
+    return {
+      asset_id: Number(assetId),
+      name: String(item?.[0] || `Limited ${assetId}`).slice(0, 200),
+      acronym: String(item?.[1] || '').slice(0, 50),
+      rap: Math.max(0, Number(item?.[2]) || 0),
+      value: Math.max(0, Number(item?.[3]) || 0),
+      default_value: Math.max(0, Number(item?.[4]) || 0),
+      demand: Number(item?.[5]) >= 0 ? Number(item[5]) : null,
+      trend: Number(item?.[6]) >= 0 ? Number(item[6]) : null,
+      projected: Number(item?.[7]) === 1,
+      hyped: Number(item?.[8]) === 1,
+      rare: Number(item?.[9]) === 1,
+      image_url: `/api/limited-items/${assetId}/image`,
+      coin_value: Math.floor(rawAmount / 1000),
+      rocoin_value: Math.floor(rawAmount / 1000),
+      active: true,
+      catalog_source: 'rolimons',
+      updated_at: updatedAt,
+    }
+  }).filter((item) => Number.isSafeInteger(item.asset_id) && item.asset_id > 0)
 }
 
 async function refreshLimitedCatalog(env) {
@@ -881,6 +1062,112 @@ async function handleRequest(request, response, env) {
   if (!url.pathname.startsWith('/api/')) return false
 
   try {
+    if (request.method === 'GET' && url.pathname === '/api/payments/oxapay/currencies') {
+      const [currenciesResponse, pricesResponse] = await Promise.all([
+        fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
+        fetch(`${OXAPAY_API_URL}/common/prices`, { signal: AbortSignal.timeout(10000) }),
+      ])
+      if (!currenciesResponse.ok || !pricesResponse.ok) throw new Error('Unable to retrieve supported cryptocurrencies.')
+      const currencies = await currenciesResponse.json()
+      const prices = await pricesResponse.json()
+      sendJson(response, 200, { currencies: currencies.data || {}, prices: prices.data || {} })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/payments/oxapay/deposit') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const coinAmount = Math.trunc(Number(body.coinAmount))
+      if (!Number.isSafeInteger(coinAmount) || coinAmount < 100 || coinAmount > 100000000) throw new Error('Enter a deposit amount between 100 and 100,000,000 Coins.')
+      const quote = await currentCryptoQuote(body.currency, body.network)
+      const orderId = randomUUID()
+      const usdAmount = Number((coinAmount / COINS_PER_USD).toFixed(2))
+      await supabaseRequest(env, '/rest/v1/rorisk_crypto_deposits', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ uuid: orderId, user_uuid: sessionUser.uuid, coin_amount: coinAmount, usd_amount: usdAmount, pay_currency: quote.symbol, network: quote.network, status: 'creating' }),
+      })
+      let payment
+      try {
+        payment = await oxaPayRequest('/payment/white-label', 'merchant_api_key', env.OXAPAY_MERCHANT_API_KEY, {
+          method: 'POST',
+          body: JSON.stringify({
+            pay_currency: quote.symbol,
+            amount: usdAmount,
+            currency: 'USD',
+            network: quote.network,
+            lifetime: 60,
+            callback_url: paymentCallbackUrl(request, env, 'deposit'),
+            order_id: orderId,
+            description: `RoRisk Coins deposit ${orderId}`,
+          }),
+        })
+      } catch (error) {
+        await supabaseRequest(env, `/rest/v1/rorisk_crypto_deposits?uuid=eq.${orderId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', updated_at: new Date().toISOString() }) }).catch(() => {})
+        throw error
+      }
+      await supabaseRequest(env, `/rest/v1/rorisk_crypto_deposits?uuid=eq.${orderId}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ track_id: String(payment.track_id), pay_amount: Number(payment.pay_amount), address: payment.address, memo: payment.memo || null, qr_code: payment.qr_code || null, expires_at: payment.expired_at ? new Date(Number(payment.expired_at) * 1000).toISOString() : null, status: 'pending', provider_payload: payment, updated_at: new Date().toISOString() }),
+      })
+      sendJson(response, 200, { payment: { orderId, trackId: String(payment.track_id), coinAmount, usdAmount, payAmount: Number(payment.pay_amount), currency: payment.pay_currency || quote.symbol, network: payment.network || quote.network, address: payment.address, memo: payment.memo || null, qrCode: payment.qr_code || null, expiresAt: payment.expired_at || null } })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/payments/oxapay/withdraw') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const coinAmount = Math.trunc(Number(body.coinAmount))
+      const address = String(body.address || '').trim()
+      const memo = String(body.memo || '').trim().slice(0, 200) || null
+      if (!Number.isSafeInteger(coinAmount) || coinAmount < 1000 || coinAmount > 100000000) throw new Error('Enter a withdrawal amount between 1,000 and 100,000,000 Coins.')
+      if (address.length < 8 || address.length > 256) throw new Error('Enter a valid withdrawal address.')
+      const quote = await currentCryptoQuote(body.currency, body.network)
+      const usdAmount = Number((coinAmount / COINS_PER_USD).toFixed(2))
+      const cryptoAmount = Number((usdAmount / quote.price).toPrecision(12))
+      if (cryptoAmount < Number(quote.networkData.withdraw_min || 0)) throw new Error(`The minimum ${quote.symbol} withdrawal on this network is ${quote.networkData.withdraw_min}.`)
+      const withdrawalId = randomUUID()
+      const reserved = await supabaseRequest(env, '/rest/v1/rpc/reserve_rorisk_crypto_withdrawal', {
+        method: 'POST',
+        body: JSON.stringify({ p_uuid: withdrawalId, p_user_uuid: sessionUser.uuid, p_coin_amount: coinAmount, p_usd_amount: usdAmount, p_crypto_amount: cryptoAmount, p_currency: quote.symbol, p_network: quote.network, p_address: address, p_memo: memo }),
+      })
+      let payout
+      try {
+        payout = await oxaPayRequest('/payout', 'payout_api_key', env.OXAPAY_PAYOUT_API_KEY, {
+          method: 'POST',
+          body: JSON.stringify({ address, currency: quote.symbol, amount: cryptoAmount, network: quote.network, callback_url: paymentCallbackUrl(request, env, 'payout'), ...(memo ? { memo } : {}), description: `RoRisk withdrawal ${withdrawalId}` }),
+        })
+      } catch (error) {
+        await supabaseRequest(env, '/rest/v1/rpc/finalize_rorisk_crypto_withdrawal', { method: 'POST', body: JSON.stringify({ p_uuid: withdrawalId, p_track_id: null, p_status: 'failed', p_payload: { error: 'provider_request_failed' } }) }).catch(() => {})
+        throw error
+      }
+      await supabaseRequest(env, `/rest/v1/rorisk_crypto_withdrawals?uuid=eq.${withdrawalId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ track_id: String(payout.track_id), status: String(payout.status || 'processing').toLowerCase(), provider_payload: payout, updated_at: new Date().toISOString() }) })
+      if (reserved?.user) startRealtimeSession(request, response, env, reserved.user)
+      sendJson(response, 200, { withdrawal: { id: withdrawalId, trackId: String(payout.track_id), status: payout.status || 'Processing', coinAmount, usdAmount, cryptoAmount, currency: quote.symbol, network: quote.network } })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/payments/oxapay/deposit-webhook') {
+      const rawBody = await readRawBody(request)
+      if (!validOxaSignature(rawBody, request.headers.hmac, env.OXAPAY_MERCHANT_API_KEY)) throw new Error('Invalid payment callback signature.')
+      const payload = JSON.parse(rawBody.toString('utf8'))
+      await supabaseRequest(env, '/rest/v1/rpc/finalize_rorisk_crypto_deposit', { method: 'POST', body: JSON.stringify({ p_order_uuid: payload.order_id || null, p_track_id: String(payload.track_id || ''), p_status: String(payload.status || '').toLowerCase(), p_payload: payload }) })
+      sendText(response, 200, 'ok')
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/payments/oxapay/payout-webhook') {
+      const rawBody = await readRawBody(request)
+      if (!validOxaSignature(rawBody, request.headers.hmac, env.OXAPAY_PAYOUT_API_KEY)) throw new Error('Invalid payout callback signature.')
+      const payload = JSON.parse(rawBody.toString('utf8'))
+      await supabaseRequest(env, '/rest/v1/rpc/finalize_rorisk_crypto_withdrawal', { method: 'POST', body: JSON.stringify({ p_uuid: null, p_track_id: String(payload.track_id || ''), p_status: String(payload.status || '').toLowerCase(), p_payload: payload }) })
+      sendText(response, 200, 'ok')
+      return true
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/api/case-images/')) {
       const objectPath = decodeURIComponent(url.pathname.slice('/api/case-images/'.length))
       if (!/^(main|other|items)\/[a-z0-9-]+\.png$/.test(objectPath)) {
@@ -921,6 +1208,72 @@ async function handleRequest(request, response, env) {
         slots: (slots || []).map(publicCasinoGame),
         live: (live || []).map(publicCasinoGame),
       })
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/upgrader/items') {
+      const currency = selectedCurrency(url.searchParams.get('currency'))
+      const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page')) || 1))
+      const pageSize = 105
+      const search = String(url.searchParams.get('search') || '').trim().toLowerCase()
+      const minimum = url.searchParams.has('amountMin') ? Math.max(0, Number(url.searchParams.get('amountMin')) || 0) : null
+      const maximum = url.searchParams.has('amountMax') ? Math.max(0, Number(url.searchParams.get('amountMax')) || 0) : null
+      const descending = String(url.searchParams.get('sort') || 'highest').toLowerCase() !== 'lowest'
+      const catalog = await getLimitedCatalog(env)
+      const filtered = catalog.filter((item) => {
+        const value = limitedItemValue(item, currency)
+        if (!value || (minimum != null && value < minimum) || (maximum != null && value > maximum)) return false
+        return !search || String(item.name || '').toLowerCase().includes(search) || String(item.acronym || '').toLowerCase().includes(search)
+      }).sort((first, second) => descending ? limitedItemValue(second, currency) - limitedItemValue(first, currency) : limitedItemValue(first, currency) - limitedItemValue(second, currency))
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+      const selectedPage = Math.min(page, totalPages)
+      const offset = (selectedPage - 1) * pageSize
+      const items = filtered.slice(offset, offset + pageSize).map((item) => publicUpgraderItem(item, currency))
+      primeLimitedImages(items).catch(() => {})
+      sendJson(response, 200, { items, count: filtered.length, page: selectedPage, totalPages })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/upgrader/play') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      const assetId = Math.trunc(Number(body.targetAssetId))
+      const rangeStart = Math.trunc(Number(body.rangeStart))
+      const mode = String(body.mode || '')
+      if (!Number.isSafeInteger(amount) || amount < 50 || amount > 500000) throw new Error('Your entered bet amount is invalid.')
+      if (!Number.isSafeInteger(assetId) || assetId < 1) throw new Error('Select an item to upgrade.')
+      if (!Number.isInteger(rangeStart) || rangeStart < 0 || rangeStart > 99999) throw new Error('The selected ticket range is invalid.')
+      if (!['under', 'over'].includes(mode)) throw new Error('The selected game mode is invalid.')
+      const catalog = await getLimitedCatalog(env)
+      const target = catalog.find((item) => Number(item.asset_id) === assetId)
+      if (!target) throw new Error('The selected item is no longer available.')
+      const currency = selectedCurrency(body.currency)
+      const targetValue = limitedItemValue(target, currency)
+      const serverSeed = randomBytes(32).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/play_rorisk_upgrader', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: currency,
+          p_target_asset_id: assetId,
+          p_target_name: String(target.name || target.acronym || `Limited ${assetId}`).slice(0, 200),
+          p_target_image: `/api/limited-items/${assetId}/image`,
+          p_target_value: targetValue,
+          p_mode: mode,
+          p_range_start: rangeStart,
+          p_client_seed: String(body.clientSeed || sessionUser.uuid).slice(0, 128),
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicUpgraderGame({ ...result.game, level: result.user?.level, rank: result.user?.rank })
+      broadcastRealtime({ type: 'upgraderBet', game })
+      sendJson(response, 200, { ...result, game })
       return true
     }
 
@@ -987,18 +1340,20 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname === '/api/bets') {
       const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))
-      const [diceResult, casesResult, coinflipResult, minesResult, rouletteResult] = await Promise.allSettled([
+      const [diceResult, casesResult, coinflipResult, minesResult, rouletteResult, upgraderResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ status: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,wager_amount,payout_amount,created_at,profile:rorisk_users!rorisk_case_openings_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,creator_uuid,creator_roblox_id,creator_username,creator_avatar_headshot,opponent_uuid,opponent_roblox_id,opponent_username,opponent_avatar_headshot,currency,amount,winner_uuid,payout_amount,completed_at,created_at,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(level,rank),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,completed_at,created_at,profile:rorisk_users!rorisk_mines_games_user_uuid_fkey(level,rank)', order: 'completed_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${new URLSearchParams({ state: 'eq.COMPLETE', select: 'uuid,bets,result_multiplier_bps,completed_at,created_at', order: 'completed_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_upgrader_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier_bps,won,payout_amount,created_at,completed_at,profile:rorisk_users!rorisk_upgrader_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
       ])
       const diceGames = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseGames = casesResult.status === 'fulfilled' ? casesResult.value : []
       const coinflipGames = coinflipResult.status === 'fulfilled' ? coinflipResult.value : []
       const minesGames = minesResult.status === 'fulfilled' ? minesResult.value : []
       const rouletteGames = rouletteResult.status === 'fulfilled' ? rouletteResult.value : []
+      const upgraderGames = upgraderResult.status === 'fulfilled' ? upgraderResult.value : []
       const bets = [
         ...diceGames.map(({ profile, ...game }) => ({ ...game, method: 'dice', level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
         ...caseGames.map(({ profile, wager_amount: betAmount, ...game }) => ({ ...game, method: 'cases', bet_amount: betAmount, multiplier: betAmount > 0 ? Number(game.payout_amount) / Number(betAmount) : 0, won: Number(game.payout_amount) >= Number(betAmount), level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
@@ -1025,6 +1380,7 @@ async function handleRequest(request, response, env) {
           created_at: game.completed_at || game.created_at,
           updated_at: game.completed_at || game.created_at,
         }))),
+        ...upgraderGames.map(({ profile, multiplier_bps: multiplierBps, ...game }) => ({ ...game, method: 'upgrader', multiplier: Number(multiplierBps) / 100, level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.completed_at || game.created_at })),
       ].sort((first, second) => new Date(second.updated_at).getTime() - new Date(first.updated_at).getTime()).slice(0, limit)
       sendJson(response, 200, { games: bets })
       return true
@@ -1036,15 +1392,17 @@ async function handleRequest(request, response, env) {
       const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page')) || 1))
       const pageSize = 10
       const userFilter = `eq.${sessionUser.uuid}`
-      const [diceResult, casesResult, minesResult] = await Promise.allSettled([
+      const [diceResult, casesResult, minesResult, upgraderResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ user_uuid: userFilter, status: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ user_uuid: userFilter, state: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_upgrader_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
       ])
-      if (diceResult.status === 'rejected' && casesResult.status === 'rejected' && minesResult.status === 'rejected') throw diceResult.reason
+      if (diceResult.status === 'rejected' && casesResult.status === 'rejected' && minesResult.status === 'rejected' && upgraderResult.status === 'rejected') throw diceResult.reason
       const diceSeeds = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseSeeds = casesResult.status === 'fulfilled' ? casesResult.value : []
       const minesSeeds = minesResult.status === 'fulfilled' ? minesResult.value : []
+      const upgraderSeeds = upgraderResult.status === 'fulfilled' ? upgraderResult.value : []
       const allSeeds = [
         ...diceSeeds.map((seed) => ({
           id: `dice:${seed.uuid}`,
@@ -1064,6 +1422,14 @@ async function handleRequest(request, response, env) {
         })),
         ...minesSeeds.map((seed) => ({
           id: `mines:${seed.uuid}`,
+          clientSeed: seed.client_seed,
+          serverSeed: seed.server_seed,
+          hash: seed.server_seed_hash,
+          nonce: Number(seed.nonce) || 0,
+          completedAt: seed.completed_at || seed.created_at,
+        })),
+        ...upgraderSeeds.map((seed) => ({
+          id: `upgrader:${seed.uuid}`,
           clientSeed: seed.client_seed,
           serverSeed: seed.server_seed,
           hash: seed.server_seed_hash,
@@ -1270,6 +1636,7 @@ async function handleRequest(request, response, env) {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/cases') {
+      const currency = selectedCurrency(url.searchParams.get('currency'))
       const query = new URLSearchParams({
         active: 'eq.true',
         select: '*',
@@ -1277,20 +1644,21 @@ async function handleRequest(request, response, env) {
       })
       const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
       sendJson(response, 200, {
-        cases: (rows || []).map((row) => publicCase(row)),
+        cases: (rows || []).map((row) => publicCase(row, false, currency)),
       })
       return true
     }
 
     const caseRoute = url.pathname.match(/^\/api\/cases\/([a-zA-Z0-9_-]+)$/)
     if (request.method === 'GET' && caseRoute) {
+      const currency = selectedCurrency(url.searchParams.get('currency'))
       const query = new URLSearchParams({ case_id: `eq.${caseRoute[1]}`, active: 'eq.true', select: '*' })
       const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
       if (!rows?.[0]) {
         sendJson(response, 404, { error: 'This case could not be found.' })
         return true
       }
-      sendJson(response, 200, { case: publicCase(rows[0], true) })
+      sendJson(response, 200, { case: publicCase(rows[0], true, currency) })
       return true
     }
 
@@ -1302,7 +1670,8 @@ async function handleRequest(request, response, env) {
       const query = new URLSearchParams({ case_id: `eq.${caseOpenRoute[1]}`, active: 'eq.true', select: '*' })
       const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
       if (!rows?.[0]) throw new Error('This case could not be found.')
-      const caseData = publicCase(rows[0], true)
+      const currency = selectedCurrency(body.currency)
+      const caseData = publicCase(rows[0], true, currency)
 
       if (body.demo === true) {
         sendJson(response, 200, {
@@ -1329,6 +1698,7 @@ async function handleRequest(request, response, env) {
           p_user_uuid: sessionUser.uuid,
           p_case_id: caseData.caseId,
           p_case_count: count,
+          p_currency: currency,
           p_client_seed: clientSeed,
           p_server_seed: serverSeed,
           p_server_seed_hash: serverSeedHash,
@@ -1464,7 +1834,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip|mines|x-roulette)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance

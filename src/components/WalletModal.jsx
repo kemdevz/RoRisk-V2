@@ -17,15 +17,15 @@ const limitedModalScope = { 'data-v-8813ba3e': '' }
 const limitedDepositScope = { 'data-v-85a7adf0': '' }
 
 const cryptoDetails = {
-  btc: { name: 'Bitcoin', network: 'BTC', address: 'PLACEHOLDER-BTC-ADDRESS-NOT-FOR-PAYMENTS' },
-  eth: { name: 'Ethereum', network: 'ETH', address: 'PLACEHOLDER-ETH-ADDRESS-NOT-FOR-PAYMENTS' },
-  sol: { name: 'Solana', network: 'SOL', address: 'PLACEHOLDER-SOL-ADDRESS-NOT-FOR-PAYMENTS' },
-  ltc: { name: 'Litecoin', network: 'LTC', address: 'PLACEHOLDER-LTC-ADDRESS-NOT-FOR-PAYMENTS' },
-  usdt: { name: 'Tether', network: 'ERC-20', address: 'PLACEHOLDER-USDT-ERC20-ADDRESS-NOT-FOR-PAYMENTS' },
-  usdc: { name: 'USDC', network: 'ERC-20', address: 'PLACEHOLDER-USDC-ERC20-ADDRESS-NOT-FOR-PAYMENTS' },
-  bnb: { name: 'BNB', network: 'BEP-20', address: 'PLACEHOLDER-BNB-BEP20-ADDRESS-NOT-FOR-PAYMENTS' },
-  trx: { name: 'Tron', network: 'TRC-20', address: 'PLACEHOLDER-TRX-TRC20-ADDRESS-NOT-FOR-PAYMENTS' },
-  xmr: { name: 'Monero', network: 'XMR', address: 'PLACEHOLDER-XMR-ADDRESS-NOT-FOR-PAYMENTS' },
+  btc: { name: 'Bitcoin', network: 'BTC', oxaNetwork: 'Bitcoin' },
+  eth: { name: 'Ethereum', network: 'ETH', oxaNetwork: 'Ethereum' },
+  sol: { name: 'Solana', network: 'SOL', oxaNetwork: 'Solana' },
+  ltc: { name: 'Litecoin', network: 'LTC', oxaNetwork: 'Litecoin' },
+  usdt: { name: 'Tether', network: 'ERC-20', oxaNetwork: 'ERC20' },
+  usdc: { name: 'USDC', network: 'ERC-20', oxaNetwork: 'ERC20' },
+  bnb: { name: 'BNB', network: 'BEP-20', oxaNetwork: 'BEP20' },
+  trx: { name: 'Tron', network: 'TRC-20', oxaNetwork: 'TRC20' },
+  xmr: { name: 'Monero', network: 'XMR', oxaNetwork: 'Monero' },
 }
 
 const cryptoMethods = {
@@ -232,9 +232,12 @@ function CryptoDeposit({ method, user }) {
   const [crypto, setCrypto] = useState('0.00000000')
   const [usd, setUsd] = useState('1.00')
   const [bonus, setBonus] = useState('')
+  const [payment, setPayment] = useState(null)
+  const [loading, setLoading] = useState(false)
   const copyAddress = async () => {
     try {
-      await navigator.clipboard.writeText(detail.address)
+      if (!payment?.address) throw new Error('No address')
+      await navigator.clipboard.writeText(payment.address)
       notify({ type: 'success', message: 'Copied to your clipboard.' })
     } catch {
       notify({ type: 'error', message: 'Failed to copy.' })
@@ -243,14 +246,32 @@ function CryptoDeposit({ method, user }) {
   const fromCoins = (value) => {
     const cleaned = value.replace(/[^\d]/g, '')
     setCoins(cleaned)
-    setUsd(((Number(cleaned) || 0) / 1000).toFixed(2))
+    setUsd(((Number(cleaned) || 0) / 100).toFixed(2))
     setCrypto('0.00000000')
   }
   const fromUsd = (value) => {
     const cleaned = value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1')
     setUsd(cleaned)
-    setCoins(String(Math.round((Number(cleaned) || 0) * 1000)))
+    setCoins(String(Math.round((Number(cleaned) || 0) * 100)))
     setCrypto('0.00000000')
+  }
+  const createDeposit = async () => {
+    if (!user) return notify({ type: 'error', message: 'Please sign in to perform this action.' })
+    const coinAmount = Math.floor(Number(String(coins).replace(/,/g, '')) || 0)
+    if (coinAmount < 100) return notify({ type: 'error', message: 'Minimum deposit amount is $1.00 USD.' })
+    setLoading(true)
+    try {
+      const response = await fetch('/api/payments/oxapay/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coinAmount, currency: currency.toUpperCase(), network: detail.oxaNetwork }) })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to generate a deposit address.')
+      setPayment(payload.payment)
+      setCrypto(Number(payload.payment.payAmount || 0).toFixed(8))
+      setUsd(Number(payload.payment.usdAmount || 0).toFixed(2))
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Unable to generate a deposit address.' })
+    } finally {
+      setLoading(false)
+    }
   }
   return <div className="modal-crypto" {...cryptoModalScope}>
     <div className="crypto-content" {...cryptoModalScope}>
@@ -258,43 +279,57 @@ function CryptoDeposit({ method, user }) {
       <div className="cashier-crypto-deposit" {...cryptoDepositScope}>
         <div className="deposit-header" {...cryptoDepositScope}><div className="header-icon" {...cryptoDepositScope}><img src={method[2]} alt="crypto icon" {...cryptoDepositScope} /></div><div className="header-text" {...cryptoDepositScope}><div className="header-title" {...cryptoDepositScope}>Deposit {detail.name}</div><div className="header-price" {...cryptoDepositScope}>$0.00</div></div></div>
         <div className="deposit-card" {...cryptoDepositScope}>
-          <div className="card-qrcode" {...cryptoDepositScope}><div className="qrcode-content" {...cryptoDepositScope}><PlaceholderQr /></div></div>
-          <div className="card-info" {...cryptoDepositScope}><div className="info-instructions" {...cryptoDepositScope}>Send the amount of {detail.name} of your choice to the following address to receive the equivalent in Coins. Only send through the {detail.network} network to this address.</div><div className="info-address" {...cryptoDepositScope}><div className="address-label" {...cryptoDepositScope}>Your personal {detail.name} deposit address:</div><div className="address-input" {...cryptoDepositScope}><div className="input-content" {...cryptoDepositScope}><input type="text" readOnly value={detail.address} aria-label={`${detail.name} placeholder deposit address`} {...cryptoDepositScope} /><button className="button-copy" type="button" title="Copy to clipboard" onClick={copyAddress} {...cryptoDepositScope}><CopyIcon {...cryptoDepositScope} /></button></div></div></div></div>
+          <div className="card-qrcode" {...cryptoDepositScope}><div className="qrcode-content" {...cryptoDepositScope}>{payment?.qrCode ? <img className="placeholder-qr" src={payment.qrCode} alt="Deposit QR code" {...cryptoDepositScope} /> : <PlaceholderQr />}</div></div>
+          <div className="card-info" {...cryptoDepositScope}><div className="info-instructions" {...cryptoDepositScope}>Send exactly {payment ? `${payment.payAmount} ${payment.currency}` : `the generated amount of ${detail.name}`} to receive the equivalent in Coins. Only send through the {detail.network} network to this address.</div><div className="info-address" {...cryptoDepositScope}><div className="address-label" {...cryptoDepositScope}>Your personal {detail.name} deposit address:</div><div className="address-input" {...cryptoDepositScope}><div className="input-content" {...cryptoDepositScope}><input type="text" readOnly value={payment?.address || 'Generate an address below'} aria-label={`${detail.name} deposit address`} {...cryptoDepositScope} /><button className="button-copy" type="button" title="Copy to clipboard" disabled={!payment?.address} onClick={copyAddress} {...cryptoDepositScope}><CopyIcon {...cryptoDepositScope} /></button></div></div></div></div>
         </div>
         {user && <div className="deposit-bonus" {...cryptoDepositScope}><div className="bonus-title-row" {...cryptoDepositScope}><span className="bonus-title" {...cryptoDepositScope}>Deposit Bonus Code</span></div><div className="bonus-row" {...cryptoDepositScope}><div className="bonus-input-wrap" {...cryptoDepositScope}><input type="text" placeholder="Enter code" maxLength="32" value={bonus} onChange={(event) => setBonus(event.target.value)} {...cryptoDepositScope} /></div><button className="bonus-apply-button" type="button" disabled={!bonus.trim()} onClick={() => notify({ type: 'error', message: 'Your entered deposit bonus code is invalid.' })} {...cryptoDepositScope}>Apply</button></div></div>}
-        <div className="deposit-exchange" {...cryptoDepositScope}><div className="exchange-title" {...cryptoDepositScope}>Exchange</div><div className="exchange-content" {...cryptoDepositScope}><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src="/coin.svg" alt="icon" {...cryptoDepositScope} /><input type="text" inputMode="numeric" placeholder="0" value={coins} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src={method[2]} alt="" {...cryptoDepositScope} /><input type="text" placeholder="0" value={crypto} readOnly {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content element-usd" {...cryptoDepositScope}><div className="usd-icon" {...cryptoDepositScope}><img src="/usd.4027001f.svg" alt="USD icon" {...cryptoDepositScope} /></div><input type="text" inputMode="decimal" placeholder="0.00" value={usd} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoDepositScope} /></div></div></div></div>
+        <div className="deposit-exchange" {...cryptoDepositScope}><div className="exchange-title" {...cryptoDepositScope}>Exchange</div><div className="exchange-content" {...cryptoDepositScope}><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src="/coin.svg" alt="icon" {...cryptoDepositScope} /><input type="text" inputMode="numeric" placeholder="0" value={coins} disabled={Boolean(payment)} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src={method[2]} alt="" {...cryptoDepositScope} /><input type="text" placeholder="0" value={crypto} readOnly {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content element-usd" {...cryptoDepositScope}><div className="usd-icon" {...cryptoDepositScope}><img src="/usd.4027001f.svg" alt="USD icon" {...cryptoDepositScope} /></div><input type="text" inputMode="decimal" placeholder="0.00" value={usd} disabled={Boolean(payment)} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoDepositScope} /></div></div></div><button className="button-withdraw" type="button" disabled={loading} onClick={payment ? () => setPayment(null) : createDeposit} {...cryptoDepositScope}><div className="button-inner" {...cryptoDepositScope}><div className="inner-content" {...cryptoDepositScope}>{loading ? 'Generating...' : payment ? 'Generate New Address' : 'Generate Deposit Address'}</div></div></button></div>
       </div>
     </div>
   </div>
 }
 
-function CryptoWithdraw({ method }) {
+function CryptoWithdraw({ method, user }) {
   const currency = method[0]
   const detail = cryptoDetails[currency]
   const [address, setAddress] = useState('')
   const [coins, setCoins] = useState('0')
   const [usd, setUsd] = useState('0.00')
+  const [loading, setLoading] = useState(false)
   const fromCoins = (value) => {
     const cleaned = value.replace(/[^\d]/g, '')
     setCoins(cleaned)
-    setUsd(((Number(cleaned) || 0) / 1000).toFixed(2))
+    setUsd(((Number(cleaned) || 0) / 100).toFixed(2))
   }
   const fromUsd = (value) => {
     const cleaned = value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1').replace(/^(\d*\.\d{0,2}).*$/, '$1')
     setUsd(cleaned)
-    setCoins(String(Math.round((Number(cleaned) || 0) * 1000)))
+    setCoins(String(Math.round((Number(cleaned) || 0) * 100)))
   }
-  const submit = () => {
+  const submit = async () => {
+    if (!user) return notify({ type: 'error', message: 'Please sign in to perform this action.' })
     if (!address.trim()) return notify({ type: 'error', message: `You need to enter a valid ${currency.toUpperCase()} withdraw address.` })
-    if ((Number(String(coins).replace(/,/g, '')) || 0) < 10000) return notify({ type: 'error', message: 'Minimum withdrawal amount is $10.00 USD.' })
-    notify({ type: 'error', message: 'Crypto withdrawals will be enabled when the cashier backend is connected.' })
+    const coinAmount = Math.floor(Number(String(coins).replace(/,/g, '')) || 0)
+    if (coinAmount < 1000) return notify({ type: 'error', message: 'Minimum withdrawal amount is $10.00 USD.' })
+    setLoading(true)
+    try {
+      const response = await fetch('/api/payments/oxapay/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: address.trim(), coinAmount, currency: currency.toUpperCase(), network: detail.oxaNetwork }) })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to create this withdrawal.')
+      window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: { ...user, coins: Math.max(0, Number(user.coins || 0) - coinAmount) } } }))
+      notify({ type: 'success', message: 'Your crypto withdrawal has been submitted.' })
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Unable to create this withdrawal.' })
+    } finally {
+      setLoading(false)
+    }
   }
   return <div className="modal-crypto" {...cryptoModalScope}>
     <div className="crypto-content" {...cryptoModalScope}>
       <div className="crypto-header" {...cryptoModalScope}><div className="header-text" {...cryptoModalScope}>Withdraw Crypto</div></div>
       <div className="cashier-crypto-withdraw" {...cryptoWithdrawScope}>
         <div className="withdraw-header" {...cryptoWithdrawScope}><div className="header-icon" {...cryptoWithdrawScope}><img src={method[2]} alt="crypto icon" {...cryptoWithdrawScope} /></div><div className="header-text" {...cryptoWithdrawScope}><div className="header-title" {...cryptoWithdrawScope}>Withdraw {detail.name}</div><div className="header-price" {...cryptoWithdrawScope}>$0.00</div></div></div>
-        <div className="withdraw-content" {...cryptoWithdrawScope}><div className="withdraw-address" {...cryptoWithdrawScope}><div className="address-inner" {...cryptoWithdrawScope}><div className="inner-title" {...cryptoWithdrawScope}>Withdraw Address</div><p {...cryptoWithdrawScope}>This action may be irreversible. Please ensure the provided information is correct.</p></div><input type="text" placeholder="Enter your wallet address..." value={address} onChange={(event) => setAddress(event.target.value)} {...cryptoWithdrawScope} /></div><div className="withdraw-amount" {...cryptoWithdrawScope}><p {...cryptoWithdrawScope}>Enter the amount of Coins you would like to withdraw. The network fees will be deducted from your withdraw amount.</p><p {...cryptoWithdrawScope}>Minimum withdrawal amount: <span {...cryptoWithdrawScope}>$10.00 USD</span>.</p><div className="amount-inputs" {...cryptoWithdrawScope}><div className="inputs-element" {...cryptoWithdrawScope}><div className="element-content" {...cryptoWithdrawScope}><img src="/coin.svg" alt="icon" {...cryptoWithdrawScope} /><input type="text" inputMode="numeric" value={coins} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoWithdrawScope} /></div></div><span {...cryptoWithdrawScope}>=</span><div className="inputs-element" {...cryptoWithdrawScope}><div className="element-content" {...cryptoWithdrawScope}><div className="usd-icon" {...cryptoWithdrawScope}><img src="/usd.4027001f.svg" alt="USD icon" {...cryptoWithdrawScope} /></div><input className="input-usd" type="text" inputMode="decimal" value={usd} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoWithdrawScope} /></div></div></div><button className="button-withdraw" type="button" onClick={submit} {...cryptoWithdrawScope}><div className="button-inner" {...cryptoWithdrawScope}><div className="inner-content" {...cryptoWithdrawScope}>Confirm Withdraw</div></div></button></div></div>
+        <div className="withdraw-content" {...cryptoWithdrawScope}><div className="withdraw-address" {...cryptoWithdrawScope}><div className="address-inner" {...cryptoWithdrawScope}><div className="inner-title" {...cryptoWithdrawScope}>Withdraw Address</div><p {...cryptoWithdrawScope}>This action may be irreversible. Please ensure the provided information is correct.</p></div><input type="text" placeholder="Enter your wallet address..." value={address} onChange={(event) => setAddress(event.target.value)} {...cryptoWithdrawScope} /></div><div className="withdraw-amount" {...cryptoWithdrawScope}><p {...cryptoWithdrawScope}>Enter the amount of Coins you would like to withdraw. The network fees will be deducted from your withdraw amount.</p><p {...cryptoWithdrawScope}>Minimum withdrawal amount: <span {...cryptoWithdrawScope}>$10.00 USD</span>.</p><div className="amount-inputs" {...cryptoWithdrawScope}><div className="inputs-element" {...cryptoWithdrawScope}><div className="element-content" {...cryptoWithdrawScope}><img src="/coin.svg" alt="icon" {...cryptoWithdrawScope} /><input type="text" inputMode="numeric" value={coins} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoWithdrawScope} /></div></div><span {...cryptoWithdrawScope}>=</span><div className="inputs-element" {...cryptoWithdrawScope}><div className="element-content" {...cryptoWithdrawScope}><div className="usd-icon" {...cryptoWithdrawScope}><img src="/usd.4027001f.svg" alt="USD icon" {...cryptoWithdrawScope} /></div><input className="input-usd" type="text" inputMode="decimal" value={usd} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoWithdrawScope} /></div></div></div><button className="button-withdraw" type="button" disabled={loading} onClick={submit} {...cryptoWithdrawScope}><div className="button-inner" {...cryptoWithdrawScope}><div className="inner-content" {...cryptoWithdrawScope}>{loading ? 'Processing...' : 'Confirm Withdraw'}</div></div></button></div></div>
       </div>
     </div>
   </div>
@@ -463,7 +498,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
 
   if (method === 'robux') return tab === 'deposit' ? <RobuxDeposit user={user} /> : <RobuxWithdraw user={user} onDone={onRequestClose} />
   if (method === 'limiteds') return <LimitedsDeposit user={user} />
-  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} user={user} /> : <CryptoWithdraw method={method} />
+  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} user={user} /> : <CryptoWithdraw method={method} user={user} />
 
   return (
     <div className="modal-cashier" {...cashierScope}>

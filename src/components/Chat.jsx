@@ -266,6 +266,7 @@ function Chat({ onToggle, user }) {
         }
         if (payload.type === 'coinflip' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:coinflip-update', { detail: { game: payload.game } }))
         if (payload.type === 'diceBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:dice-bet', { detail: { game: payload.game } }))
+        if (payload.type === 'upgraderBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:upgrader-bet', { detail: { game: payload.game } }))
         if (payload.type === 'minesBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:mines-bet', { detail: { game: payload.game } }))
         if (payload.type === 'rouletteBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:roulette-bet', { detail: { game: payload.game, bet: payload.bet } }))
         if (payload.type === 'rouletteState' && payload.game) {

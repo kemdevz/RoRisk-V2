@@ -21514,6 +21514,73 @@ p[data-v-6353188e] {
     gap: 30px;
   }
 }
+.upgrader-button-loading[data-v-ebb1163c] {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.upgrader-button-loading i[data-v-ebb1163c] {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: upgrader-button-dot .8s ease-in-out infinite alternate;
+}
+.upgrader-button-loading i[data-v-ebb1163c]:nth-child(2) {
+  animation-delay: .15s;
+}
+.upgrader-button-loading i[data-v-ebb1163c]:nth-child(3) {
+  animation-delay: .3s;
+}
+.upgrader-item-element .inner-selected-icon[data-v-2dd1797c] {
+  opacity: 0;
+  transform: scale(.5);
+  transform-origin: top right;
+  transition: opacity .2s cubic-bezier(.36,0,.66,-.56),transform .2s cubic-bezier(.36,0,.66,-.56);
+}
+.upgrader-item-element .inner-selected-icon.is-visible[data-v-2dd1797c] {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: .3s;
+  transition-timing-function: cubic-bezier(.34,1.56,.64,1);
+}
+.upgrader-game .mid-spinner.result-win .inner-chance-block[data-v-b05eafda],.upgrader-game .mid-spinner.result-loss .inner-chance-block[data-v-b05eafda] {
+  transition: opacity .3s cubic-bezier(.25,.46,.45,.94),transform .3s cubic-bezier(.25,.46,.45,.94) !important;
+}
+.upgrader-game .mid-spinner.result-win .inner-result-block[data-v-b05eafda],.upgrader-game .mid-spinner.result-loss .inner-result-block[data-v-b05eafda] {
+  transition: opacity .4s cubic-bezier(.175,.885,.32,1.15) .12s,transform .4s cubic-bezier(.175,.885,.32,1.15) .12s !important;
+}
+.upgrader-game .mid-spinner:not(.result-win):not(.result-loss) .inner-chance-block[data-v-b05eafda] {
+  transition: opacity .4s cubic-bezier(.175,.885,.32,1.15) .12s,transform .4s cubic-bezier(.175,.885,.32,1.15) .12s !important;
+}
+.upgrader-game .mid-spinner:not(.result-win):not(.result-loss) .inner-result-block[data-v-b05eafda] {
+  transition: opacity .3s cubic-bezier(.25,.46,.45,.94),transform .3s cubic-bezier(.25,.46,.45,.94) !important;
+}
+.upgrader-dropdown-in {
+  animation: upgrader-dropdown-in .2s ease both;
+}
+.upgrader-dropdown-out {
+  animation: upgrader-dropdown-out .2s ease both;
+  pointer-events: none;
+}
+@keyframes upgrader-dropdown-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+@keyframes upgrader-dropdown-out {
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+@keyframes upgrader-button-dot {
+  to {
+    opacity: .35;
+    transform: translateY(-3px);
+  }
+}
 .bets-element .element-user .box-level[data-v-ff759fba] {
   flex-shrink: 0;
 }

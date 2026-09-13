@@ -28,12 +28,13 @@ function Dropdown({ kind, value, options, open, onToggle, onSelect }) {
   </div>
 }
 
-function CaseCard({ box }) {
+function CaseCard({ box, currency }) {
   const image = box.imageUrl
+  const amount = currency === 'coins' ? box.coinAmount : box.rocoinAmount
   return <a className="cases-box-element" href={`/cases/${box.caseId}`} {...boxScope}>
     <div className="box-content" {...boxScope}>
       <div className="box-image" {...boxScope}><img className="box-image-top" src={image} loading="lazy" decoding="async" alt="" {...boxScope} /><img className="box-image-glow" src={image} loading="lazy" decoding="async" alt="" {...boxScope} /></div>
-      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src="/rocoin.2d3febd5.svg" alt="RoCoins" {...boxScope} /><span {...boxScope}>{Math.floor(Number(box.rocoinAmount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div></div></div>
+      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt={currency === 'coins' ? 'Coins' : 'RoCoins'} {...boxScope} /><span {...boxScope}>{Math.floor(Number(amount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div></div></div>
     </div>
   </a>
 }
@@ -50,11 +51,18 @@ function Cases() {
   const [price, setPrice] = useState('Any')
   const [sort, setSort] = useState('highest')
   const [dropdown, setDropdown] = useState(null)
+  const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
+
+  useEffect(() => {
+    const update = (event) => setCurrency(event.detail?.currency === 'coins' ? 'coins' : 'rocoins')
+    window.addEventListener('rorisk:currency-change', update)
+    return () => window.removeEventListener('rorisk:currency-change', update)
+  }, [])
 
   useEffect(() => {
     document.title = 'Cases - RoRisk.com'
     const controller = new AbortController()
-    fetch('/api/cases', { signal: controller.signal })
+    fetch('/api/cases?currency=rocoins', { signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || 'Unable to load cases.')
@@ -77,19 +85,23 @@ function Cases() {
       const categories = Array.isArray(box.categories) ? box.categories : []
       if (!categories.includes('featured')) return false
       if (query && !box.name.toLowerCase().includes(query)) return false
-      const amount = Number(box.rocoinAmount) || 0
+      const amount = Number(currency === 'coins' ? box.coinAmount : box.rocoinAmount) || 0
       if (price === '0 - 5,000') return amount <= 5_000
       if (price === '5K - 25K') return amount > 5_000 && amount <= 25_000
       if (price === '25K - 100K') return amount > 25_000 && amount <= 100_000
       if (price === '+100,000') return amount > 100_000
       return true
     })
-    return result.sort((left, right) => sort === 'highest' ? right.rocoinAmount - left.rocoinAmount : left.rocoinAmount - right.rocoinAmount)
-  }, [boxes, price, search, sort])
+    return result.sort((left, right) => {
+      const leftAmount = Number(currency === 'coins' ? left.coinAmount : left.rocoinAmount) || 0
+      const rightAmount = Number(currency === 'coins' ? right.coinAmount : right.rocoinAmount) || 0
+      return sort === 'highest' ? rightAmount - leftAmount : leftAmount - rightAmount
+    })
+  }, [boxes, currency, price, search, sort])
 
   const limiteds = filtered.filter((box) => box.type !== 'mm2')
   const mm2 = filtered.filter((box) => box.type === 'mm2')
-  const list = (items) => <div className="overview-list" {...overviewScope}>{items.map((box) => <CaseCard box={box} key={box.caseId} />)}</div>
+  const list = (items) => <div className="overview-list" {...overviewScope}>{items.map((box) => <CaseCard box={box} currency={currency} key={box.caseId} />)}</div>
 
   return <div className="cases" ref={root} {...casesScope}>
     <div className="cases-header" {...casesScope}><div className="cases-header-overview" {...headerScope}><div className="header-title" {...headerScope}><SiteIcon name="cases" {...headerScope} /><span {...headerScope}>Cases</span></div><div className="header-filters" {...headerScope}><div className="filters-search" {...headerScope}><div className="cases-filter-search" {...searchScope}><SiteIcon name="search" {...searchScope} /><input type="text" placeholder="Search for a case..." value={search} onChange={(event) => setSearch(event.target.value)} {...searchScope} /></div></div><div className="filters-price" {...headerScope}><Dropdown kind="Price Range" value={price} options={priceOptions} open={dropdown === 'price'} onToggle={() => setDropdown(dropdown === 'price' ? null : 'price')} onSelect={(value) => { setPrice(value); setDropdown(null) }} /></div><div className="filters-sort" {...headerScope}><Dropdown kind="Sort By" value={sort === 'highest' ? 'Highest' : 'Lowest'} options={[["Lowest", 'lowest'], ["Highest", 'highest']]} open={dropdown === 'sort'} onToggle={() => setDropdown(dropdown === 'sort' ? null : 'sort')} onSelect={(value) => { setSort(value); setDropdown(null) }} /></div></div></div></div>

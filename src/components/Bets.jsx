@@ -107,6 +107,7 @@ function Bets({ games }) {
     const timer = window.setInterval(refresh, 5000)
     window.addEventListener('rorisk:dice-bet', receiveBet)
     window.addEventListener('rorisk:mines-bet', receiveBet)
+    window.addEventListener('rorisk:upgrader-bet', receiveBet)
     window.addEventListener('rorisk:roulette-bet', refresh)
     window.addEventListener('rorisk:coinflip-update', refresh)
     return () => {
@@ -114,6 +115,7 @@ function Bets({ games }) {
       window.clearInterval(timer)
       window.removeEventListener('rorisk:dice-bet', receiveBet)
       window.removeEventListener('rorisk:mines-bet', receiveBet)
+      window.removeEventListener('rorisk:upgrader-bet', receiveBet)
       window.removeEventListener('rorisk:roulette-bet', refresh)
       window.removeEventListener('rorisk:coinflip-update', refresh)
     }
@@ -130,7 +132,7 @@ function Bets({ games }) {
         const icon = game.currency === 'rocoins' ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
         const level = Number(game.level) || 0
         const method = game.method || 'dice'
-        const methodLabel = method === 'cases' ? 'Cases' : method === 'coinflip' ? 'Coinflip' : method === 'mines' ? 'Mines' : method === 'xroulette' ? 'X-Roulette' : 'Dice'
+        const methodLabel = method === 'cases' ? 'Cases' : method === 'coinflip' ? 'Coinflip' : method === 'mines' ? 'Mines' : method === 'xroulette' ? 'X-Roulette' : method === 'upgrader' ? 'Upgrader' : 'Dice'
         return <div className="bets-row" key={game.uuid} ref={(node) => { if (node) rowNodes.current.set(game.uuid, node); else rowNodes.current.delete(game.uuid) }} {...scope}><div className={`bets-element ${game.won ? 'bet-positive' : 'bet-negative'}`} {...scope}><div className="element-game" {...scope}><SiteIcon name={method} {...scope} /><span {...scope}>{methodLabel}</span></div><div className="element-user" {...scope}><div className="user-avatar" {...scope}><img className="avatar-image" src={game.avatar_headshot || '/default-avatar.png'} alt="" {...scope} /></div><div className={`box-level level-${levelTheme(level)}`} data-v-ff759fba=""><div className="level-inner" data-v-ff759fba="">{level}</div></div><span className="user-username" {...scope}>{game.username || 'Guest'}</span></div><div className="element-time" {...scope}>{betTime(game.updatedAt || game.updated_at || game.createdAt || game.created_at)}</div><div className="element-amount" {...scope}><img src={icon} alt="" {...scope} /><span {...scope}>{amount(game.bet_amount)}</span></div><div className="element-multiplier" {...scope}>{Number(game.multiplier || 0).toFixed(2)}x</div><div className="element-payout" {...scope}><img src={icon} alt="" {...scope} /><span className={game.won ? 'payout-positive' : ''} {...scope}>{amount(game.payout_amount)}</span></div></div></div>
       })}</div></div>}</div>
     </div>

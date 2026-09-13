@@ -30,8 +30,8 @@ alter table public.rorisk_limited_items add column if not exists coin_value bigi
 alter table public.rorisk_limited_items add column if not exists rocoin_value bigint;
 
 update public.rorisk_limited_items
-set coin_value = floor(greatest(0, case when coalesce(value, 0) > 0 then value when coalesce(default_value, 0) > 0 then default_value else coalesce(rap, 0) end) / 1000.0),
-    rocoin_value = floor(greatest(0, case when coalesce(value, 0) > 0 then value when coalesce(default_value, 0) > 0 then default_value else coalesce(rap, 0) end) / 1000.0),
+set coin_value = least(40000000, floor(greatest(0, case when coalesce(value, 0) > 0 then value when coalesce(default_value, 0) > 0 then default_value else coalesce(rap, 0) end))),
+    rocoin_value = least(40000000, floor(greatest(0, case when coalesce(value, 0) > 0 then value when coalesce(default_value, 0) > 0 then default_value else coalesce(rap, 0) end))),
     image_url = '/api/limited-items/' || asset_id::text || '/image',
     updated_at = now()
 where coin_value is null

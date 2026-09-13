@@ -177,7 +177,7 @@ function DiceGame({ mode, setMode, low, high, setTargets, result, openingMotion 
   const resultClass = result ? (result.won ? ' win' : ' lose') : ''
 
   const diceMotionClass = result ? `moving ${result.moveDirection || ''}` : openingMotion ? 'moving moving-right' : ''
-  return <div className="dice-game" {...gameScope}><div className="game-background" {...gameScope}><img src="/main.c55d6769.png" alt="bg" {...gameScope} /></div><div className="slider-section" {...gameScope}><div className="slider-track" onPointerDown={(event) => startDrag(event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} {...gameScope}><div className="slider-line" ref={trackRef} {...gameScope}><div className={`dice-result${resultClass}`} style={{ left: result ? `${clamp(displayRoll / 100, 6, 94)}%` : '50%' }} {...gameScope}><img key={`${result?.uuid || 'initial'}-${displayRoll}-${openingMotion}`} className={diceMotionClass.trim()} src="/api/casino-images/dice/dice.png" alt="Dice" draggable="false" {...gameScope} /><span {...gameScope}>{formatRoll(displayRoll)}</span></div><div className="track-base" {...gameScope} />{segments.map((segment, index) => <div className={`track-fill ${segment.kind}`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} key={index} {...gameScope} />)}{result && <div className="result-highlight" style={{ left: `${result.roll / 100}%` }} {...gameScope} />}{popup && <div className={`handle-value ${popup.leaving ? 'selector-pop-leave-active selector-pop-leave-to' : 'selector-pop-enter-active'}`} style={{ left: `${(popup.kind === 'low' ? low : high) / 100}%` }} {...gameScope}>{formatRoll(popup.kind === 'low' ? low : high)}</div>}<div className="slider-handle" style={{ left: `${low / 100}%` }} role="slider" tabIndex="0" aria-label="Low target" aria-valuemin="0" aria-valuemax="99.99" aria-valuenow={low / 100} onPointerDown={(event) => { event.stopPropagation(); startDrag(event, 'low') }} onKeyDown={(event) => handleKey(event, 'low')} {...gameScope} />{rangeMode && <div className="slider-handle" style={{ left: `${high / 100}%` }} role="slider" tabIndex="0" aria-label="High target" aria-valuemin="0" aria-valuemax="99.99" aria-valuenow={high / 100} onPointerDown={(event) => { event.stopPropagation(); startDrag(event, 'high') }} onKeyDown={(event) => handleKey(event, 'high')} {...gameScope} />}</div></div><div className="slider-scale" {...gameScope}><span {...gameScope}>0</span><span {...gameScope}>25</span><span {...gameScope}>50</span><span {...gameScope}>75</span><span {...gameScope}>100</span></div></div>
+  return <div className="dice-game" {...gameScope}><div className="game-background" {...gameScope}><img src="/main.c55d6769.png" alt="bg" {...gameScope} /></div><div className="slider-section" {...gameScope}><div className="slider-track" onPointerDown={(event) => startDrag(event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} {...gameScope}><div className="slider-line" ref={trackRef} {...gameScope}><div className={`dice-result${resultClass}`} style={{ left: result ? `${clamp(displayRoll / 100, 6, 94)}%` : '50%' }} {...gameScope}><img key={result?.uuid || 'initial'} className={diceMotionClass.trim()} src="/api/casino-images/dice/dice.png" alt="Dice" draggable="false" decoding="sync" fetchPriority="high" {...gameScope} /><span {...gameScope}>{formatRoll(displayRoll)}</span></div><div className="track-base" {...gameScope} />{segments.map((segment, index) => <div className={`track-fill ${segment.kind}`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} key={index} {...gameScope} />)}{result && <div className="result-highlight" style={{ left: `${result.roll / 100}%` }} {...gameScope} />}{popup && <div className={`handle-value ${popup.leaving ? 'selector-pop-leave-active selector-pop-leave-to' : 'selector-pop-enter-active'}`} style={{ left: `${(popup.kind === 'low' ? low : high) / 100}%` }} {...gameScope}>{formatRoll(popup.kind === 'low' ? low : high)}</div>}<div className="slider-handle" style={{ left: `${low / 100}%` }} role="slider" tabIndex="0" aria-label="Low target" aria-valuemin="0" aria-valuemax="99.99" aria-valuenow={low / 100} onPointerDown={(event) => { event.stopPropagation(); startDrag(event, 'low') }} onKeyDown={(event) => handleKey(event, 'low')} {...gameScope} />{rangeMode && <div className="slider-handle" style={{ left: `${high / 100}%` }} role="slider" tabIndex="0" aria-label="High target" aria-valuemin="0" aria-valuemax="99.99" aria-valuenow={high / 100} onPointerDown={(event) => { event.stopPropagation(); startDrag(event, 'high') }} onKeyDown={(event) => handleKey(event, 'high')} {...gameScope} />}</div></div><div className="slider-scale" {...gameScope}><span {...gameScope}>0</span><span {...gameScope}>25</span><span {...gameScope}>50</span><span {...gameScope}>75</span><span {...gameScope}>100</span></div></div>
     <div className={`control-panel${rangeMode ? '' : ' three-columns'}`} {...gameScope}><div className="input-group" {...gameScope}><label className="input-label" {...gameScope}>Payout</label><div className="input-wrapper" {...gameScope}><input className="input-field" type="text" key={`multiplier-${multiplier}`} defaultValue={multiplier.toFixed(3)} onBlur={(event) => commitInput(event, 'multiplier')} {...gameScope} /><span className="input-suffix" {...gameScope}>X</span></div></div><div className="input-group" {...gameScope}><label className="input-label" {...gameScope}>Win Chance</label><div className="input-wrapper" {...gameScope}><input className="input-field" type="text" key={`chance-${chance}`} defaultValue={chance.toFixed(2)} onBlur={(event) => commitInput(event, 'chance')} {...gameScope} /><span className="input-suffix" {...gameScope}>%</span></div></div>{!rangeMode && <div className="input-group" {...gameScope}><label className="input-label" {...gameScope}>{mode === 'under' ? 'Roll Under' : 'Roll Over'}</label><div className="input-wrapper" {...gameScope}><input className="input-field" type="text" key={`target-${low}`} defaultValue={formatRoll(low)} onBlur={(event) => commitInput(event, 'target')} {...gameScope} /><button className="roll-toggle" type="button" title={mode === 'under' ? 'Switch to Roll Over' : 'Switch to Roll Under'} onClick={() => setMode(mode === 'under' ? 'over' : 'under')} {...gameScope}><svg viewBox="0 0 24 24" aria-hidden="true" {...gameScope}><path d="M5 8h12m0 0-3-3m3 3-3 3M19 16H7m0 0 3-3m-3 3 3 3" /></svg></button></div></div>}</div>
   </div>
 }
@@ -199,19 +199,38 @@ function Dice({ user }) {
     document.title = 'Dice - RoRisk.com'
     let secondFrame
     let finishTimer
-    let motionTimer
     const firstFrame = window.requestAnimationFrame(() => {
       secondFrame = window.requestAnimationFrame(() => {
         setEntryPhase('active')
-        setOpeningMotion(true)
         finishTimer = window.setTimeout(() => setEntryPhase('idle'), 200)
-        motionTimer = window.setTimeout(() => setOpeningMotion(false), 700)
       })
     })
     return () => {
       window.cancelAnimationFrame(firstFrame)
       if (secondFrame) window.cancelAnimationFrame(secondFrame)
       if (finishTimer) window.clearTimeout(finishTimer)
+    }
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    let motionFrame
+    let motionTimer
+    const image = new Image()
+    image.src = '/api/casino-images/dice/dice.png'
+    const startMotion = () => {
+      if (cancelled) return
+      motionFrame = window.requestAnimationFrame(() => {
+        if (cancelled) return
+        setOpeningMotion(true)
+        motionTimer = window.setTimeout(() => setOpeningMotion(false), 700)
+      })
+    }
+    if (image.complete) image.decode?.().then(startMotion).catch(startMotion)
+    else image.addEventListener('load', startMotion, { once: true })
+    return () => {
+      cancelled = true
+      image.removeEventListener('load', startMotion)
+      if (motionFrame) window.cancelAnimationFrame(motionFrame)
       if (motionTimer) window.clearTimeout(motionTimer)
     }
   }, [])

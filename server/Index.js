@@ -385,6 +385,100 @@ function publicMinesGame(row) {
   }
 }
 
+function blackjackCardValue(cards) {
+  let value = 0
+  let aces = 0
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (card?.rank === 'A') { value += 11; aces += 1 }
+    else if (['K', 'Q', 'J'].includes(card?.rank)) value += 10
+    else value += Math.max(0, Math.trunc(Number(card?.rank) || 0))
+  }
+  while (value > 21 && aces > 0) { value -= 10; aces -= 1 }
+  return value
+}
+
+function blackjackNatural(cards) {
+  return Array.isArray(cards) && cards.length === 2 && blackjackCardValue(cards) === 21
+}
+
+function createBlackjackDeck(serverSeed, clientSeed, nonce) {
+  const suits = ['club', 'diamond', 'heart', 'spade']
+  const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+  return suits.flatMap((suit) => ranks.map((rank) => ({ rank, suit }))).map((card, index) => ({
+    ...card,
+    order: createHash('sha256').update(`${serverSeed}:${clientSeed}:${nonce}:${index}`).digest('hex'),
+  })).sort((first, second) => first.order.localeCompare(second.order)).map(({ rank, suit }) => ({ rank, suit }))
+}
+
+function publicBlackjackGame(row) {
+  const completed = row.state === 'completed'
+  const dealerCards = Array.isArray(row.dealer_cards) ? row.dealer_cards.map((card, index) => (!completed && index === 1 ? { rank: 'hidden', suit: card.suit } : card)) : []
+  return {
+    uuid: row.uuid,
+    user_uuid: row.user_uuid,
+    roblox_id: row.roblox_id,
+    username: row.username,
+    avatar_headshot: row.avatar_headshot,
+    currency: row.currency,
+    bet_amount: Number(row.wager_amount ?? row.bet_amount) || 0,
+    main_bet_amount: Number(row.bet_amount) || 0,
+    wager_amount: Number(row.wager_amount ?? row.bet_amount) || 0,
+    insurance_amount: Number(row.insurance_amount) || 0,
+    payout_amount: Number(row.payout_amount) || 0,
+    multiplier: Number(row.multiplier) || 0,
+    state: row.state,
+    active_hand: row.active_hand,
+    dealer_cards: dealerCards,
+    player_cards: Array.isArray(row.player_cards) ? row.player_cards : [],
+    cards_left: Array.isArray(row.cards_left) ? row.cards_left : [],
+    cards_right: Array.isArray(row.cards_right) ? row.cards_right : [],
+    actions: Array.isArray(row.actions) ? row.actions : [],
+    outcomes: row.outcomes && typeof row.outcomes === 'object' ? row.outcomes : {},
+    won: row.won === true,
+    client_seed: row.client_seed,
+    server_seed_hash: row.server_seed_hash,
+    server_seed: completed ? row.server_seed : null,
+    nonce: Number(row.nonce) || 0,
+    deck: completed && Array.isArray(row.deck) ? row.deck : null,
+    created_at: row.created_at,
+    completed_at: row.completed_at,
+    updated_at: row.updated_at,
+    level: Number(row.profile?.level) || Number(row.level) || 0,
+    rank: row.profile?.rank || row.rank || 'user',
+    method: 'blackjack',
+  }
+}
+
+function settleBlackjack({ dealerCards, playerCards, cardsLeft, cardsRight, deck, deckPosition, betAmount, insuranceAmount = 0 }) {
+  const split = cardsLeft.length > 0 && cardsRight.length > 0
+  const playerHands = split ? [['left', cardsLeft], ['right', cardsRight]] : [['main', playerCards]]
+  const dealerNatural = blackjackNatural(dealerCards)
+  const hasLiveHand = playerHands.some(([, cards]) => blackjackCardValue(cards) <= 21)
+  while (hasLiveHand && !dealerNatural && blackjackCardValue(dealerCards) < 17 && deckPosition < deck.length) {
+    dealerCards.push(deck[deckPosition])
+    deckPosition += 1
+  }
+  const dealerValue = blackjackCardValue(dealerCards)
+  let payout = dealerNatural && insuranceAmount > 0 ? insuranceAmount * 3 : 0
+  const outcomes = {}
+  for (const [name, cards] of playerHands) {
+    const value = blackjackCardValue(cards)
+    const natural = !split && blackjackNatural(cards)
+    let result = 'lose'
+    if (value > 21) result = 'lose'
+    else if (natural && !dealerNatural) { result = 'won'; payout += Math.floor(betAmount * 2.5) }
+    else if (dealerNatural && natural) { result = 'push'; payout += betAmount }
+    else if (dealerNatural) result = 'lose'
+    else if (dealerValue > 21 || value > dealerValue) { result = 'won'; payout += betAmount * 2 }
+    else if (value === dealerValue) { result = 'push'; payout += betAmount }
+    outcomes[name] = result
+  }
+  const results = Object.values(outcomes)
+  outcomes.dealer = results.every((result) => result === 'push') ? 'push' : results.some((result) => result === 'won') ? 'lose' : 'won'
+  outcomes.dealerValue = dealerValue
+  return { dealerCards, deckPosition, outcomes, payout }
+}
+
 function publicUpgraderGame(row) {
   return {
     uuid: row.uuid,
@@ -419,13 +513,15 @@ function publicUpgraderGame(row) {
   }
 }
 
+const MAX_UPGRADER_ITEM_VALUE = 40000000
+
 function limitedItemValue(item, currency = 'rocoins') {
   const marketValue = Math.trunc(Number(item?.value) || 0)
   const defaultValue = Math.trunc(Number(item?.default_value) || 0)
   const rap = Math.trunc(Number(item?.rap) || 0)
   const rawAmount = Math.max(0, marketValue > 0 ? marketValue : defaultValue > 0 ? defaultValue : rap)
   const exactProductionValues = item?.catalog_source === 'rorisk-production'
-  const productionValue = Math.floor(rawAmount / 1000)
+  const productionValue = Math.min(MAX_UPGRADER_ITEM_VALUE, Math.floor(rawAmount))
   const storedValue = exactProductionValues
     ? Math.max(0, Math.trunc(Number(item?.coin_value ?? item?.rocoin_value) || productionValue))
     : productionValue
@@ -516,8 +612,8 @@ async function fetchLimitedCatalog() {
       hyped: Number(item?.[8]) === 1,
       rare: Number(item?.[9]) === 1,
       image_url: `/api/limited-items/${assetId}/image`,
-      coin_value: Math.floor(rawAmount / 1000),
-      rocoin_value: Math.floor(rawAmount / 1000),
+      coin_value: Math.min(MAX_UPGRADER_ITEM_VALUE, Math.floor(rawAmount)),
+      rocoin_value: Math.min(MAX_UPGRADER_ITEM_VALUE, Math.floor(rawAmount)),
       active: true,
       catalog_source: 'rolimons',
       updated_at: updatedAt,
@@ -1009,10 +1105,12 @@ async function supabaseAuthRequest(env, path, options = {}) {
   if (!env.SUPABASE_URL || !serverKeys.length) throw new Error('Authentication is temporarily unavailable. Please try again later.')
   let lastError
   for (const [index, serverKey] of serverKeys.entries()) {
+    const legacyJwtKey = serverKey.startsWith('eyJ')
     const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1${path}`, {
       ...options,
       headers: {
         apikey: serverKey,
+        ...(legacyJwtKey ? { Authorization: `Bearer ${serverKey}` } : {}),
         'Content-Type': 'application/json',
         ...options.headers,
       },
@@ -1340,13 +1438,14 @@ async function handleRequest(request, response, env) {
 
     if (request.method === 'GET' && url.pathname === '/api/bets') {
       const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30))
-      const [diceResult, casesResult, coinflipResult, minesResult, rouletteResult, upgraderResult] = await Promise.allSettled([
+      const [diceResult, casesResult, coinflipResult, minesResult, rouletteResult, upgraderResult, blackjackResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,created_at,profile:rorisk_users!rorisk_dice_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ status: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,wager_amount,payout_amount,created_at,profile:rorisk_users!rorisk_case_openings_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_coinflip_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,creator_uuid,creator_roblox_id,creator_username,creator_avatar_headshot,opponent_uuid,opponent_roblox_id,opponent_username,opponent_avatar_headshot,currency,amount,winner_uuid,payout_amount,completed_at,created_at,creator_profile:rorisk_users!rorisk_coinflip_games_creator_uuid_fkey(level,rank),opponent_profile:rorisk_users!rorisk_coinflip_games_opponent_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier,won,payout_amount,completed_at,created_at,profile:rorisk_users!rorisk_mines_games_user_uuid_fkey(level,rank)', order: 'completed_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_roulette_games?${new URLSearchParams({ state: 'eq.COMPLETE', select: 'uuid,bets,result_multiplier_bps,completed_at,created_at', order: 'completed_at.desc', limit: String(limit) })}`),
         supabaseRequest(env, `/rest/v1/rorisk_upgrader_games?${new URLSearchParams({ select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,bet_amount,multiplier_bps,won,payout_amount,created_at,completed_at,profile:rorisk_users!rorisk_upgrader_games_user_uuid_fkey(level,rank)', order: 'created_at.desc', limit: String(limit) })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_blackjack_games?${new URLSearchParams({ state: 'eq.completed', select: 'uuid,user_uuid,roblox_id,username,avatar_headshot,currency,wager_amount,multiplier,won,payout_amount,created_at,completed_at,profile:rorisk_users!rorisk_blackjack_games_user_uuid_fkey(level,rank)', order: 'completed_at.desc', limit: String(limit) })}`),
       ])
       const diceGames = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseGames = casesResult.status === 'fulfilled' ? casesResult.value : []
@@ -1354,6 +1453,7 @@ async function handleRequest(request, response, env) {
       const minesGames = minesResult.status === 'fulfilled' ? minesResult.value : []
       const rouletteGames = rouletteResult.status === 'fulfilled' ? rouletteResult.value : []
       const upgraderGames = upgraderResult.status === 'fulfilled' ? upgraderResult.value : []
+      const blackjackGames = blackjackResult.status === 'fulfilled' ? blackjackResult.value : []
       const bets = [
         ...diceGames.map(({ profile, ...game }) => ({ ...game, method: 'dice', level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
         ...caseGames.map(({ profile, wager_amount: betAmount, ...game }) => ({ ...game, method: 'cases', bet_amount: betAmount, multiplier: betAmount > 0 ? Number(game.payout_amount) / Number(betAmount) : 0, won: Number(game.payout_amount) >= Number(betAmount), level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.created_at })),
@@ -1381,6 +1481,7 @@ async function handleRequest(request, response, env) {
           updated_at: game.completed_at || game.created_at,
         }))),
         ...upgraderGames.map(({ profile, multiplier_bps: multiplierBps, ...game }) => ({ ...game, method: 'upgrader', multiplier: Number(multiplierBps) / 100, level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.completed_at || game.created_at })),
+        ...blackjackGames.map(({ profile, wager_amount: betAmount, ...game }) => ({ ...game, method: 'blackjack', bet_amount: betAmount, level: Number(profile?.level) || 0, rank: profile?.rank || 'user', updated_at: game.completed_at || game.created_at })),
       ].sort((first, second) => new Date(second.updated_at).getTime() - new Date(first.updated_at).getTime()).slice(0, limit)
       sendJson(response, 200, { games: bets })
       return true
@@ -1392,17 +1493,19 @@ async function handleRequest(request, response, env) {
       const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page')) || 1))
       const pageSize = 10
       const userFilter = `eq.${sessionUser.uuid}`
-      const [diceResult, casesResult, minesResult, upgraderResult] = await Promise.allSettled([
+      const [diceResult, casesResult, minesResult, upgraderResult, blackjackResult] = await Promise.allSettled([
         supabaseRequest(env, `/rest/v1/rorisk_dice_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_case_openings?${new URLSearchParams({ user_uuid: userFilter, status: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_mines_games?${new URLSearchParams({ user_uuid: userFilter, state: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
         supabaseRequest(env, `/rest/v1/rorisk_upgrader_games?${new URLSearchParams({ user_uuid: userFilter, select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
+        supabaseRequest(env, `/rest/v1/rorisk_blackjack_games?${new URLSearchParams({ user_uuid: userFilter, state: 'eq.completed', select: 'uuid,client_seed,server_seed_hash,server_seed,nonce,created_at,completed_at', order: 'created_at.desc', limit: '1000' })}`),
       ])
-      if (diceResult.status === 'rejected' && casesResult.status === 'rejected' && minesResult.status === 'rejected' && upgraderResult.status === 'rejected') throw diceResult.reason
+      if (diceResult.status === 'rejected' && casesResult.status === 'rejected' && minesResult.status === 'rejected' && upgraderResult.status === 'rejected' && blackjackResult.status === 'rejected') throw diceResult.reason
       const diceSeeds = diceResult.status === 'fulfilled' ? diceResult.value : []
       const caseSeeds = casesResult.status === 'fulfilled' ? casesResult.value : []
       const minesSeeds = minesResult.status === 'fulfilled' ? minesResult.value : []
       const upgraderSeeds = upgraderResult.status === 'fulfilled' ? upgraderResult.value : []
+      const blackjackSeeds = blackjackResult.status === 'fulfilled' ? blackjackResult.value : []
       const allSeeds = [
         ...diceSeeds.map((seed) => ({
           id: `dice:${seed.uuid}`,
@@ -1430,6 +1533,14 @@ async function handleRequest(request, response, env) {
         })),
         ...upgraderSeeds.map((seed) => ({
           id: `upgrader:${seed.uuid}`,
+          clientSeed: seed.client_seed,
+          serverSeed: seed.server_seed,
+          hash: seed.server_seed_hash,
+          nonce: Number(seed.nonce) || 0,
+          completedAt: seed.completed_at || seed.created_at,
+        })),
+        ...blackjackSeeds.map((seed) => ({
+          id: `blackjack:${seed.uuid}`,
           clientSeed: seed.client_seed,
           serverSeed: seed.server_seed,
           hash: seed.server_seed_hash,
@@ -1476,6 +1587,188 @@ async function handleRequest(request, response, env) {
       if (result?.game) result.game.level = Number(result.user?.level) || 0
       if (result?.game) broadcastRealtime({ type: 'diceBet', game: result.game })
       sendJson(response, 200, result)
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/blackjack/current') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) {
+        sendJson(response, 200, { game: null })
+        return true
+      }
+      const query = new URLSearchParams({
+        user_uuid: `eq.${sessionUser.uuid}`,
+        state: 'in.(insurance,playing)',
+        select: '*',
+        order: 'created_at.desc',
+        limit: '1',
+      })
+      const games = await supabaseRequest(env, `/rest/v1/rorisk_blackjack_games?${query}`)
+      sendJson(response, 200, { game: games?.[0] ? publicBlackjackGame(games[0]) : null })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/blackjack/start') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const amount = Math.trunc(Number(body.amount))
+      const nonce = Math.max(0, Math.trunc(Number(body.nonce)) || 0)
+      if (!Number.isSafeInteger(amount) || amount < 50 || amount > 500000) throw new Error('Your entered bet amount is invalid.')
+      const currency = selectedCurrency(body.currency)
+      const clientSeed = String(body.clientSeed || sessionUser.uuid).slice(0, 128)
+      const serverSeed = randomBytes(24).toString('hex')
+      const serverSeedHash = createHash('sha256').update(serverSeed).digest('hex')
+      const deck = createBlackjackDeck(serverSeed, clientSeed, nonce)
+      const playerCards = [deck[0], deck[2]]
+      const dealerCards = [deck[1], deck[3]]
+      let deckPosition = 4
+      let state = dealerCards[0].rank === 'A' ? 'insurance' : 'playing'
+      let activeHand = 'main'
+      let outcomes = {}
+      let payout = 0
+      if (state === 'playing' && (blackjackNatural(playerCards) || blackjackNatural(dealerCards))) {
+        const settled = settleBlackjack({ dealerCards, playerCards, cardsLeft: [], cardsRight: [], deck, deckPosition, betAmount: amount })
+        deckPosition = settled.deckPosition
+        outcomes = settled.outcomes
+        payout = settled.payout
+        state = 'completed'
+        activeHand = 'completed'
+      }
+      const result = await supabaseRequest(env, '/rest/v1/rpc/start_rorisk_blackjack', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_user_uuid: sessionUser.uuid,
+          p_amount: amount,
+          p_currency: currency,
+          p_state: state,
+          p_active_hand: activeHand,
+          p_dealer_cards: dealerCards,
+          p_player_cards: playerCards,
+          p_deck: deck,
+          p_deck_position: deckPosition,
+          p_outcomes: outcomes,
+          p_payout: payout,
+          p_client_seed: clientSeed,
+          p_server_seed: serverSeed,
+          p_server_seed_hash: serverSeedHash,
+          p_nonce: nonce,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicBlackjackGame({ ...result.game, level: result.user?.level, rank: result.user?.rank })
+      if (game.state === 'completed') broadcastRealtime({ type: 'blackjackBet', game })
+      sendJson(response, 200, { ...result, game })
+      return true
+    }
+
+    const blackjackActionRoute = url.pathname.match(/^\/api\/blackjack\/([a-fA-F0-9-]+)\/(insurance|hit|stand|split|double)$/)
+    if (request.method === 'POST' && blackjackActionRoute) {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      const [gameId, action] = blackjackActionRoute.slice(1)
+      const query = new URLSearchParams({ uuid: `eq.${gameId}`, user_uuid: `eq.${sessionUser.uuid}`, state: 'in.(insurance,playing)', select: '*', limit: '1' })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_blackjack_games?${query}`)
+      const row = rows?.[0]
+      if (!row) throw new Error('You have no running blackjack game at the moment.')
+
+      const deck = Array.isArray(row.deck) ? row.deck.map((card) => ({ ...card })) : []
+      const dealerCards = Array.isArray(row.dealer_cards) ? row.dealer_cards.map((card) => ({ ...card })) : []
+      const playerCards = Array.isArray(row.player_cards) ? row.player_cards.map((card) => ({ ...card })) : []
+      let cardsLeft = Array.isArray(row.cards_left) ? row.cards_left.map((card) => ({ ...card })) : []
+      let cardsRight = Array.isArray(row.cards_right) ? row.cards_right.map((card) => ({ ...card })) : []
+      const actions = Array.isArray(row.actions) ? [...row.actions] : []
+      const betAmount = Number(row.bet_amount) || 0
+      let insuranceAmount = Number(row.insurance_amount) || 0
+      let deckPosition = Number(row.deck_position) || 4
+      let state = row.state
+      let activeHand = row.active_hand || 'main'
+      let outcomes = row.outcomes && typeof row.outcomes === 'object' ? row.outcomes : {}
+      let payout = 0
+      let extraWager = 0
+      const draw = () => {
+        if (deckPosition >= deck.length) throw new Error('The blackjack deck is exhausted.')
+        const card = deck[deckPosition]
+        deckPosition += 1
+        return card
+      }
+      const complete = (mainHandWager = betAmount) => {
+        const settled = settleBlackjack({ dealerCards, playerCards, cardsLeft, cardsRight, deck, deckPosition, betAmount: mainHandWager, insuranceAmount })
+        deckPosition = settled.deckPosition
+        outcomes = settled.outcomes
+        payout = settled.payout
+        state = 'completed'
+        activeHand = 'completed'
+      }
+
+      if (action === 'insurance') {
+        if (state !== 'insurance') throw new Error('Insurance is no longer available.')
+        const accepted = body.insurance === true
+        actions.push(accepted ? 'insurance' : 'no-insurance')
+        if (accepted) { insuranceAmount = Math.floor(betAmount / 2); extraWager = insuranceAmount }
+        if (blackjackNatural(dealerCards) || blackjackNatural(playerCards)) complete()
+        else state = 'playing'
+      } else {
+        if (state !== 'playing') throw new Error('This blackjack action is not available.')
+        if (action === 'hit') {
+          if (cardsLeft.length && cardsRight.length && cardsLeft[0]?.rank === 'A' && cardsRight[0]?.rank === 'A') throw new Error('Split aces cannot receive another card.')
+          actions.push('hit')
+          if (cardsLeft.length && cardsRight.length) {
+            const hand = activeHand === 'left' ? cardsLeft : cardsRight
+            hand.push(draw())
+            if (blackjackCardValue(hand) >= 21) {
+              if (activeHand === 'right') activeHand = 'left'
+              else complete()
+            }
+          } else {
+            playerCards.push(draw())
+            if (blackjackCardValue(playerCards) >= 21) complete()
+          }
+        } else if (action === 'stand') {
+          actions.push('stand')
+          if (cardsLeft.length && cardsRight.length && activeHand === 'right') activeHand = 'left'
+          else complete()
+        } else if (action === 'split') {
+          if (cardsLeft.length || cardsRight.length || playerCards.length !== 2 || playerCards[0]?.rank !== playerCards[1]?.rank) throw new Error('This hand cannot be split.')
+          extraWager = betAmount
+          actions.push('split')
+          cardsLeft = [playerCards[0], draw()]
+          cardsRight = [playerCards[1], draw()]
+          activeHand = blackjackCardValue(cardsRight) >= 21 ? 'left' : 'right'
+        } else if (action === 'double') {
+          if (cardsLeft.length || cardsRight.length || playerCards.length !== 2) throw new Error('This hand cannot be doubled.')
+          extraWager = betAmount
+          actions.push('double')
+          playerCards.push(draw())
+          complete(betAmount * 2)
+        }
+      }
+
+      const result = await supabaseRequest(env, '/rest/v1/rpc/update_rorisk_blackjack', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_game_uuid: gameId,
+          p_user_uuid: sessionUser.uuid,
+          p_expected_updated_at: row.updated_at,
+          p_extra_wager: extraWager,
+          p_payout: payout,
+          p_state: state,
+          p_active_hand: activeHand,
+          p_dealer_cards: dealerCards,
+          p_player_cards: playerCards,
+          p_cards_left: cardsLeft,
+          p_cards_right: cardsRight,
+          p_deck_position: deckPosition,
+          p_actions: actions,
+          p_outcomes: outcomes,
+          p_insurance_amount: insuranceAmount,
+        }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      const game = publicBlackjackGame({ ...result.game, level: result.user?.level, rank: result.user?.rank })
+      if (game.state === 'completed') broadcastRealtime({ type: 'blackjackBet', game })
+      sendJson(response, 200, { ...result, game })
       return true
     }
 
@@ -1748,14 +2041,21 @@ async function handleRequest(request, response, env) {
     if (request.method === 'POST' && url.pathname === '/api/auth/email/sign-up') {
       const { username, email, password } = await readJson(request)
       const cleanUsername = String(username || '').trim()
+      const cleanEmail = String(email || '').trim().toLowerCase()
       if (!/^[A-Za-z0-9_]{3,20}$/.test(cleanUsername)) throw new Error('Your entered username is invalid.')
-      const result = await supabaseAuthRequest(env, '/signup', {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error('Your entered email is invalid.')
+      if (String(password || '').length < 8) throw new Error('Your entered password is invalid.')
+      await supabaseAuthRequest(env, '/admin/users', {
         method: 'POST',
-        body: JSON.stringify({ email: String(email || '').trim(), password: String(password || ''), data: { username: cleanUsername } }),
+        body: JSON.stringify({ email: cleanEmail, password: String(password), email_confirm: true, user_metadata: { username: cleanUsername } }),
       })
-      const user = result.access_token ? await completeAuthProfile(env, result.access_token) : null
+      const session = await supabaseAuthRequest(env, '/token?grant_type=password', {
+        method: 'POST',
+        body: JSON.stringify({ email: cleanEmail, password: String(password) }),
+      })
+      const user = await completeAuthProfile(env, session.access_token)
       startRealtimeSession(request, response, env, user)
-      sendJson(response, 200, { user, confirmationRequired: !result.access_token })
+      sendJson(response, 200, { user })
       return true
     }
 
@@ -1834,7 +2134,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:cases|dice|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:cases|dice|blackjack|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance

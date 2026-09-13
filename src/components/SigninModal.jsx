@@ -65,12 +65,8 @@ function RegisterForm({ setTab, onAuthenticated }) {
     setLoading(true)
     try {
       const user = await signUpWithPassword({ username, email, password })
-      if (user) {
-        notify({ type: 'success', message: 'Registered successfully!' })
-        onAuthenticated?.(user)
-      } else {
-        notify({ type: 'success', message: 'Check your email to confirm your account.' })
-      }
+      notify({ type: 'success', message: 'Registered successfully!' })
+      onAuthenticated?.(user)
     } catch (error) {
       notify({ type: 'error', message: error.message || 'Registration failed. Please try again.' })
     } finally {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Chat from './components/Chat'
 import Footer from './components/Footer'
 import Header from './components/Header'
@@ -11,25 +11,74 @@ import SettingsModal from './components/SettingsModal'
 import WalletModal from './components/WalletModal'
 import StatisticsModal from './components/StatisticsModal'
 import TransactionsModal from './components/TransactionsModal'
-import Home from './Pages/Home'
-import Rewards from './Pages/Rewards'
-import Market from './Pages/Market'
-import Affiliates from './Pages/Affiliates'
-import Race from './Pages/Race'
-import Cases from './Pages/Cases'
-import CaseOpen from './Pages/CaseOpen'
-import Slots from './Pages/Slots'
-import LiveCasino from './Pages/LiveCasino'
-import CasinoGame from './Pages/CasinoGame'
-import Dice from './Pages/Dice'
-import Coinflip from './Pages/Coinflip'
-import Mines from './Pages/Mines'
-import XRoulette from './Pages/XRoulette'
-import Upgrader from './Pages/Upgrader'
-import ProvablyFair from './Pages/ProvablyFair'
 import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 import { preloadSound } from './lib/Sounds'
+
+const pageLoaders = {
+  home: () => import('./Pages/Home'),
+  rewards: () => import('./Pages/Rewards'),
+  market: () => import('./Pages/Market'),
+  affiliates: () => import('./Pages/Affiliates'),
+  race: () => import('./Pages/Race'),
+  cases: () => import('./Pages/Cases'),
+  caseOpen: () => import('./Pages/CaseOpen'),
+  slots: () => import('./Pages/Slots'),
+  liveCasino: () => import('./Pages/LiveCasino'),
+  casinoGame: () => import('./Pages/CasinoGame'),
+  dice: () => import('./Pages/Dice'),
+  blackjack: () => import('./Pages/Blackjack'),
+  coinflip: () => import('./Pages/Coinflip'),
+  mines: () => import('./Pages/Mines'),
+  xRoulette: () => import('./Pages/XRoulette'),
+  upgrader: () => import('./Pages/Upgrader'),
+  provablyFair: () => import('./Pages/ProvablyFair'),
+}
+
+const pageComponents = {
+  '/': lazy(pageLoaders.home),
+  '/rewards': lazy(pageLoaders.rewards),
+  '/market': lazy(pageLoaders.market),
+  '/affiliates': lazy(pageLoaders.affiliates),
+  '/race': lazy(pageLoaders.race),
+  '/cases': lazy(pageLoaders.cases),
+  '/slots': lazy(pageLoaders.slots),
+  '/live-casino': lazy(pageLoaders.liveCasino),
+  '/dice': lazy(pageLoaders.dice),
+  '/blackjack': lazy(pageLoaders.blackjack),
+  '/coinflip': lazy(pageLoaders.coinflip),
+  '/mines': lazy(pageLoaders.mines),
+  '/x-roulette': lazy(pageLoaders.xRoulette),
+  '/upgrader': lazy(pageLoaders.upgrader),
+  '/provably-fair': lazy(pageLoaders.provablyFair),
+}
+
+const routeLoaders = {
+  '/': pageLoaders.home,
+  '/rewards': pageLoaders.rewards,
+  '/market': pageLoaders.market,
+  '/affiliates': pageLoaders.affiliates,
+  '/race': pageLoaders.race,
+  '/cases': pageLoaders.cases,
+  '/slots': pageLoaders.slots,
+  '/live-casino': pageLoaders.liveCasino,
+  '/dice': pageLoaders.dice,
+  '/blackjack': pageLoaders.blackjack,
+  '/coinflip': pageLoaders.coinflip,
+  '/mines': pageLoaders.mines,
+  '/x-roulette': pageLoaders.xRoulette,
+  '/upgrader': pageLoaders.upgrader,
+  '/provably-fair': pageLoaders.provablyFair,
+}
+
+const CaseOpen = lazy(pageLoaders.caseOpen)
+const CasinoGame = lazy(pageLoaders.casinoGame)
+
+function pageLoader(pathname) {
+  if (/^\/cases\/[a-zA-Z0-9_-]+$/.test(pathname)) return pageLoaders.caseOpen
+  if (/^\/(?:slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(pathname)) return pageLoaders.casinoGame
+  return routeLoaders[pathname] || pageLoaders.home
+}
 
 function readStoredUser() {
   try {
@@ -60,6 +109,17 @@ function App() {
   useEffect(() => {
     preloadSound('slideStarted')
   }, [])
+
+  useEffect(() => {
+    if (loaderPhase !== 'done') return undefined
+    const warmPages = () => { Object.values(pageLoaders).forEach(loader => loader().catch(() => {})) }
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(warmPages, { timeout: 4000 })
+      return () => window.cancelIdleCallback(idleId)
+    }
+    const timer = window.setTimeout(warmPages, 1000)
+    return () => window.clearTimeout(timer)
+  }, [loaderPhase])
 
   useEffect(() => {
     const updateUser = (event) => {
@@ -115,10 +175,11 @@ function App() {
       if (!anchor || anchor.target || anchor.hasAttribute('download')) return
 
       const url = new URL(anchor.href, window.location.href)
-      if (url.origin !== window.location.origin || !(/^\/(?:cases|slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases', '/slots', '/live-casino', '/dice', '/coinflip', '/mines', '/x-roulette', '/upgrader', '/provably-fair'].includes(url.pathname))) return
+      if (url.origin !== window.location.origin || !(/^\/(?:cases|slots|live-casino)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/', '/rewards', '/market', '/affiliates', '/race', '/cases', '/slots', '/live-casino', '/dice', '/blackjack', '/coinflip', '/mines', '/x-roulette', '/upgrader', '/provably-fair'].includes(url.pathname))) return
 
       event.preventDefault()
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return
+      pageLoader(url.pathname)().catch(() => {})
       window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`)
       updatePathname()
     }
@@ -168,7 +229,7 @@ function App() {
     if (loaderPhase !== 'visible') return undefined
     let cancelled = false
     const minimumDelay = new Promise((resolve) => window.setTimeout(resolve, 2400))
-    const routeReady = Promise.resolve()
+    const routeReady = pageLoader(window.location.pathname)()
     Promise.all([minimumDelay, routeReady]).then(() => { if (!cancelled) setLoaderPhase('leaving') })
     return () => { cancelled = true }
   }, [loaderPhase])
@@ -204,8 +265,7 @@ function App() {
 
   const caseMatch = displayedPath.match(/^\/cases\/([a-zA-Z0-9_-]+)$/)
   const casinoMatch = displayedPath.match(/^\/(slots|live-casino)\/([a-zA-Z0-9_.-]+)$/)
-  const pages = { '/': Home, '/rewards': Rewards, '/market': Market, '/affiliates': Affiliates, '/race': Race, '/cases': Cases, '/slots': Slots, '/live-casino': LiveCasino, '/dice': Dice, '/coinflip': Coinflip, '/mines': Mines, '/x-roulette': XRoulette, '/upgrader': Upgrader, '/provably-fair': ProvablyFair }
-  const Page = caseMatch ? CaseOpen : casinoMatch ? CasinoGame : pages[displayedPath] || Home
+  const Page = caseMatch ? CaseOpen : casinoMatch ? CasinoGame : pageComponents[displayedPath] || pageComponents['/']
   const openWallet = (tab = 'deposit') => { setSiteModalClosing(false); setSiteModal({ type: 'wallet', tab }) }
   const openSettings = () => { setSiteModalClosing(false); setSiteModal({ type: 'settings' }) }
   const openStatistics = () => { setSiteModalClosing(false); setSiteModal({ type: 'statistics' }) }
@@ -237,7 +297,9 @@ function App() {
         >
           <div className="content-wrapper">
             <div className={routeClass}>
-              <Page key={displayedPath} user={user} caseId={caseMatch?.[1]} gameId={casinoMatch?.[2]} live={casinoMatch?.[1] === 'live-casino'} onSignIn={() => setAuthModal('login')} />
+              <Suspense fallback={null}>
+                <Page key={displayedPath} user={user} caseId={caseMatch?.[1]} gameId={casinoMatch?.[2]} live={casinoMatch?.[1] === 'live-casino'} onSignIn={() => setAuthModal('login')} />
+              </Suspense>
             </div>
           </div>
           <Footer />

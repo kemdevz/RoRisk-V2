@@ -251,7 +251,7 @@ function Blackjack({ user }) {
     let active = true
     fetch('/api/blackjack/current').then(async (response) => { const payload = await response.json(); if (active && response.ok) { setGame(payload.game || null); if (payload.game) { setAmount(formatAmount(payload.game.main_bet_amount)); setCurrency(payload.game.currency) } } }).catch(() => {})
     return () => { active = false }
-  }, [user])
+  }, [user?.uuid])
   const request = useCallback(async (path, body = {}) => {
     const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const payload = await response.json()
@@ -266,14 +266,21 @@ function Blackjack({ user }) {
       const playerExtraCards = finalGame.cards_left?.length && finalGame.cards_right?.length
         ? Math.max(0, finalGame.cards_left.length - 1) + Math.max(0, finalGame.cards_right.length - 1)
         : Math.max(0, (finalGame.player_cards?.length || 0) - 2)
-      const presentationGame = { ...finalGame, state: 'playing', outcomes: {}, dealer_cards: dealerCards }
+      const openingDealerCards = dealerCards.length > 2 ? dealerCards.slice(0, 2) : dealerCards
+      const presentationGame = { ...finalGame, state: 'playing', outcomes: {}, dealer_cards: openingDealerCards }
       setGame(presentationGame)
 
       let completionDelay = 1880
-      for (let index = 2; index < dealerCards.length; index += 1) {
-        const order = 4 + playerExtraCards + (index - 2)
-        const cardFinish = (order <= 3 ? 360 * order : 180 * (order - 3)) + 800
-        completionDelay = Math.max(completionDelay, cardFinish)
+      if (dealerCards.length > 2) {
+        const dealerDrawTimer = window.setTimeout(() => {
+          setGame({ ...presentationGame, dealer_cards: dealerCards })
+        }, 900)
+        stagedTimers.current.push(dealerDrawTimer)
+        for (let index = 2; index < dealerCards.length; index += 1) {
+          const order = 4 + playerExtraCards + (index - 2)
+          const cardFinish = 900 + (order <= 3 ? 360 * order : 180 * (order - 3)) + 800
+          completionDelay = Math.max(completionDelay, cardFinish)
+        }
       }
 
       const finishTimer = window.setTimeout(() => {

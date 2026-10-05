@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SiteIcon from './Icons'
 import ModalAnimation from './ModalAnimation'
 import { notify } from '../lib/Notifications'
+import { normalizeStaffRank, rankAccent, staffAccent, xpRankForLevel } from '../lib/Ranks'
 
 const scope = { 'data-v-7b767a0f': '' }
 const rainPoolScope = { 'data-v-dea29896': '' }
@@ -136,26 +137,18 @@ function RainJoin({ amount, timer, joined, participantsCount, onJoin }) {
   return <div className="rain-join" {...rainJoinScope} {...scope}><div className="rain-info" {...rainJoinScope}><div className="rain-info-container" {...rainJoinScope}><div className="rain-info-title-container" {...rainJoinScope}><div className="rain-amount" {...rainJoinScope}><img src="/coin.svg" alt="icon" {...rainJoinScope} /><span className="animated-number" {...rainJoinScope}>{displayAmount.toLocaleString()}</span></div><div className="rain-info-title" {...rainJoinScope}><span {...rainJoinScope}>It's raining now!</span></div></div><div className="rain-timer" {...rainJoinScope}><TimerIcon join /><span {...rainJoinScope}>{formatTimer(timer)}</span></div></div><div className="rain-buttons" {...rainJoinScope}><button className="join-btn" type="button" disabled={joined} onClick={onJoin} {...rainJoinScope}><span {...rainJoinScope}>{joined ? 'Already Joined' : 'Join Rain'} <span className="rain-players" {...rainJoinScope}><PeopleIcon /><span {...rainJoinScope}>{participantsCount}</span></span></span></button></div></div></div>
 }
 
-function MessageContent({ text, emojis }) {
+const MessageContent = memo(function MessageContent({ text, emojis }) {
   const emojiMap = useMemo(() => new Map(emojis.map((emoji) => [emoji.code, emoji.src])), [emojis])
   return text.split(/:([a-z0-9][a-z0-9_-]*):/gi).map((part, index) => emojiMap.has(part.toLowerCase()) ? <img className="chat-emoji" src={emojiMap.get(part.toLowerCase())} alt={`:${part}:`} title={`:${part}:`} key={`${part}-${index}`} {...messageScope} /> : <span key={`${part}-${index}`} {...messageScope}>{part}</span>)
-}
-
-function levelTheme(level) {
-  if (level >= 100) return 'red'
-  if (level >= 75) return 'orange'
-  if (level >= 50) return 'purple'
-  if (level >= 25) return 'green'
-  return 'blue'
-}
+})
 
 function ChatRankBadge({ rank }) {
   if (!['admin', 'mod', 'partner'].includes(rank)) return null
   const hash = rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'
-  return <div className={`box-rank rank-${rank} rank-box`} data-v-fc8af502="" {...messageScope}><div className="rank-inner" data-v-fc8af502=""><img src={`/${rank}.${hash}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${rank} rank-box`} data-v-fc8af502="" {...messageScope}><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${rank}.${hash}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
 }
 
-function ChatMessage({ message, emojis }) {
+const ChatMessage = memo(function ChatMessage({ message, emojis }) {
   let systemContent = null
   if (message.type === 'rainCompleted') {
     const count = Number(message.claimedCount) || 0
@@ -169,12 +162,15 @@ function ChatMessage({ message, emojis }) {
   }
   if (systemContent) return <div className="chat-message-element element-system" {...messageScope} {...scope}><div className="chat-message-element element-system" {...messageScope} {...systemMessageScope}><div className="element-message" {...systemMessageScope}><div className="message-content" {...systemMessageScope}><div className="user-message-group" {...systemMessageScope}><button className="button-user" type="button" {...systemMessageScope}><div className="system-avatar" {...systemMessageScope}><img src="/Chat/system.c68aca3f.png" alt="System" {...systemMessageScope} /></div><div className="user-username-group" {...systemMessageScope}><div className="user-username-group-inner" {...systemMessageScope}><span className="user-username" {...systemMessageScope}>System Message</span></div><div className="element-text" {...systemMessageScope}>{systemContent}</div></div></button></div></div></div></div></div>
   const messageUser = message.user || message
-  const level = Math.min(100, Math.max(0, Number(messageUser.level) || 0))
-  const rank = String(messageUser.rank || 'user').toLowerCase()
+  const level = Math.min(129, Math.max(0, Number(messageUser.level) || 0))
+  const rank = normalizeStaffRank(messageUser.rank)
+  const staff = staffAccent(rank)
+  const xpRank = xpRankForLevel(level)
+  const accentStyle = { '--rank-accent': rankAccent(rank, level) }
   const avatar = messageUser.avatar_headshot || messageUser.avatar || '/default-avatar.png'
   const username = messageUser.username || ''
-  return <div className="chat-message-element" {...messageScope} {...scope}><div className={`element-message${rank !== 'user' ? ` ${rank}-message` : ''}`} {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src={avatar} alt={username} data-v-6adb23f8="" /></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{username}</span>{rank === 'user' ? <div className={`box-level level-${levelTheme(level)} level-box`} data-v-ff759fba="" {...messageScope}><div className="level-inner" data-v-ff759fba="">{level}</div></div> : <ChatRankBadge rank={rank} />}</div><div className="element-text" {...messageScope}><MessageContent text={message.text} emojis={emojis} /></div></div></button></div></div></div></div>
-}
+  return <div className="chat-message-element" {...messageScope} {...scope}><div className={`element-message${staff ? ` ${rank}-message` : ''}`} {...messageScope}><div className="message-content" {...messageScope}><div className="user-message-group" {...messageScope}><button className="button-user" type="button" {...messageScope}><div className="user-avatar-wrap" style={accentStyle} {...messageScope}><div className="avatar-image user-avatar" data-v-6adb23f8="" {...messageScope}><img src={avatar} alt={username} data-v-6adb23f8="" /></div></div><div className="user-username-group" {...messageScope}><div className="user-username-group-inner" {...messageScope}><span className="user-username" {...messageScope}>{username}</span>{staff ? <ChatRankBadge rank={rank} /> : <img className="user-rank-icon" src={xpRank.icon} alt={xpRank.name} {...messageScope} />}</div><div className="element-text" {...messageScope}><MessageContent text={message.text} emojis={emojis} /></div></div></button></div></div></div></div>
+})
 
 /*
 function ChatModalContent({ type, onClose, onStartRain }) {
@@ -265,6 +261,7 @@ function Chat({ onToggle, user }) {
           setShowRainTip(false)
         }
         if (payload.type === 'coinflip' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:coinflip-update', { detail: { game: payload.game } }))
+        if (payload.type === 'battleUpdate' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:battle-update', { detail: { game: payload.game } }))
         if (payload.type === 'diceBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:dice-bet', { detail: { game: payload.game } }))
         if (payload.type === 'blackjackBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:blackjack-bet', { detail: { game: payload.game } }))
         if (payload.type === 'upgraderBet' && payload.game) window.dispatchEvent(new CustomEvent('rorisk:upgrader-bet', { detail: { game: payload.game } }))
@@ -317,7 +314,10 @@ function Chat({ onToggle, user }) {
     return () => { active = false }
   }, [])
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(Date.now()), 500)
+    const tick = () => {
+      if (!document.hidden) setClock(Date.now())
+    }
+    const timer = window.setInterval(tick, 500)
     return () => window.clearInterval(timer)
   }, [])
   useEffect(() => { messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: 'smooth' }) }, [messages])

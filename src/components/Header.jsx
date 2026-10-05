@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import SiteIcon from './Icons'
 import { playSound } from '../lib/Sounds'
+import { normalizeStaffRank, rankAccent, xpRankForLevel } from '../lib/Ranks'
 
 const cashierScope = { 'data-v-d934db46': '' }
 const amountNumberScope = { 'data-v-2edbedb3': '' }
@@ -58,26 +59,34 @@ function useDropdownTransition(duration, transitionName) {
 }
 
 function userLevelData(user) {
+  const storedLevel = Number(user?.level)
+  if (Number.isFinite(storedLevel) && storedLevel >= 0) {
+    const storedProgress = Number(user?.levelProgress ?? user?.level_progress)
+    return {
+      level: Math.min(129, Math.floor(storedLevel)),
+      progress: Number.isFinite(storedProgress) ? Math.min(100, Math.max(0, storedProgress)) : 0,
+    }
+  }
   const xp = Number(user?.xp)
   if (Number.isFinite(xp) && xp > 0) {
-    const level = Math.min(100, Math.floor(Math.cbrt(xp / 1000 / 50)))
-    if (level >= 100) return { level, progress: 100 }
+    const level = Math.min(129, Math.floor(Math.cbrt(xp / 1000 / 50)))
+    if (level >= 129) return { level, progress: 100 }
     const start = 1000 * (level ** 3) * 50
     const end = 1000 * ((level + 1) ** 3) * 50
     return { level, progress: Math.min(100, Math.max(0, ((xp - start) / (end - start)) * 100)) }
   }
-  return { level: Math.min(100, Math.max(0, Number(user?.level) || 0)), progress: 0 }
+  return { level: Math.min(129, Math.max(0, Number(user?.level) || 0)), progress: 0 }
 }
 
 function formatBalance(value) {
   return Math.floor(Number(value) || 0).toLocaleString('en-US')
 }
 
-function AmountNumber({ amount, className = '', isPlus = false }) {
+function AmountNumber({ amount, className = '', isPlus = false, duration = 1000, easeOut = false }) {
   const target = Number(amount) || 0
   const [current, setCurrent] = useState(target)
   const currentRef = useRef(target)
-  const intervalRef = useRef(null)
+  const frameRef = useRef(null)
   const mountedRef = useRef(false)
 
   useEffect(() => {
@@ -88,41 +97,32 @@ function AmountNumber({ amount, className = '', isPlus = false }) {
       return undefined
     }
 
-    if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
-    const step = Math.floor(target - currentRef.current) / 60
-    intervalRef.current = window.setInterval(() => {
-      const next = Math.floor(currentRef.current + step)
-      if ((step >= 0 && next >= target) || (step <= 0 && next <= target)) {
-        window.clearInterval(intervalRef.current)
-        intervalRef.current = null
-        currentRef.current = target
-        setCurrent(target)
-        return
-      }
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
+    const from = currentRef.current
+    const startedAt = performance.now()
+    const animate = (now) => {
+      const linear = Math.min(1, (now - startedAt) / duration)
+      const progress = easeOut ? 1 - (1 - linear) ** 3 : linear
+      const next = from + (target - from) * progress
       currentRef.current = next
       setCurrent(next)
-    }, 1000 / 60)
+      if (linear < 1) frameRef.current = window.requestAnimationFrame(animate)
+      else frameRef.current = null
+    }
+    frameRef.current = window.requestAnimationFrame(animate)
 
     return () => {
-      if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
-      intervalRef.current = null
+      if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
     }
-  }, [target])
+  }, [duration, easeOut, target])
 
   return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current)}</span></div>
 }
 
-function levelTheme(level) {
-  if (level >= 100) return 'red'
-  if (level >= 75) return 'orange'
-  if (level >= 50) return 'purple'
-  if (level >= 25) return 'green'
-  return 'blue'
-}
-
 function RankBadge({ rank, className = '' }) {
   if (!['admin', 'mod', 'partner'].includes(rank)) return null
-  return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
 }
 
 function NavbarCashier({ user, onOpenWallet }) {
@@ -134,6 +134,9 @@ function NavbarCashier({ user, onOpenWallet }) {
   const balanceKeyRef = useRef(null)
   const animationFramesRef = useRef(new Set())
   const animationTimersRef = useRef(new Set())
+  const balanceNoticeHoldsRef = useRef(new Map())
+  const heldBalanceChangesRef = useRef({ coins: 0, rocoins: 0 })
+  const currencyRef = useRef(currency)
   const isRoCoins = currency === 'rocoins'
   const balance = Number(isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)) || 0
   const currencyIcon = isRoCoins ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
@@ -141,12 +144,100 @@ function NavbarCashier({ user, onOpenWallet }) {
   const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
   const alternateLabel = isRoCoins ? 'Coins' : 'RoCoins'
 
+  useEffect(() => {
+    currencyRef.current = currency
+  }, [currency])
+
+  const showBalanceChange = useCallback((amount) => {
+    if (!amount) return
+    const addChange = () => {
+      playSound('balance', { volume: 0.5 })
+      const id = Date.now() + Math.random()
+      setBalanceChanges((changes) => [...changes, { id, amount, phase: 'enter' }].slice(-2))
+      const firstFrame = requestAnimationFrame(() => {
+        animationFramesRef.current.delete(firstFrame)
+        const secondFrame = requestAnimationFrame(() => {
+          animationFramesRef.current.delete(secondFrame)
+          setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'open' } : change))
+        })
+        animationFramesRef.current.add(secondFrame)
+      })
+      animationFramesRef.current.add(firstFrame)
+      const leaveTimer = window.setTimeout(() => {
+        animationTimersRef.current.delete(leaveTimer)
+        setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'leave' } : change))
+        const removeTimer = window.setTimeout(() => {
+          animationTimersRef.current.delete(removeTimer)
+          setBalanceChanges((changes) => changes.filter((change) => change.id !== id))
+        }, 200)
+        animationTimersRef.current.add(removeTimer)
+      }, 3000)
+      animationTimersRef.current.add(leaveTimer)
+    }
+    addChange()
+  }, [])
+
+  useEffect(() => {
+    const holds = balanceNoticeHoldsRef.current
+    const activeHolds = (targetCurrency) => [...holds.values()]
+      .some((hold) => !hold.currency || hold.currency === targetCurrency)
+    const flush = (targetCurrency) => {
+      if (activeHolds(targetCurrency)) return
+      const amount = heldBalanceChangesRef.current[targetCurrency] || 0
+      if (!amount) return
+      heldBalanceChangesRef.current[targetCurrency] = 0
+      if (currencyRef.current === targetCurrency) showBalanceChange(amount)
+    }
+    const holdUpdate = (event) => {
+      const detail = event.detail || {}
+      const id = String(detail.id || 'game')
+      const current = holds.get(id)
+      if (current?.timer) window.clearTimeout(current.timer)
+      if (detail.active === false) {
+        holds.delete(id)
+        const targetCurrency = detail.currency || current?.currency
+        if (targetCurrency) flush(targetCurrency)
+        else {
+          flush('coins')
+          flush('rocoins')
+        }
+        return
+      }
+      const until = Math.max(Date.now(), Number(detail.until) || Date.now())
+      const hold = { currency: detail.currency, timer: null }
+      hold.timer = window.setTimeout(() => {
+        holds.delete(id)
+        if (hold.currency) flush(hold.currency)
+        else {
+          flush('coins')
+          flush('rocoins')
+        }
+      }, Math.max(0, until - Date.now()))
+      holds.set(id, hold)
+    }
+    window.addEventListener('rorisk:balance-notification-hold', holdUpdate)
+    return () => {
+      window.removeEventListener('rorisk:balance-notification-hold', holdUpdate)
+      for (const hold of holds.values()) window.clearTimeout(hold.timer)
+      holds.clear()
+    }
+  }, [showBalanceChange])
+
   const selectCurrency = () => {
     window.localStorage.setItem('currency', alternateCurrency)
     setCurrency(alternateCurrency)
     window.dispatchEvent(new CustomEvent('rorisk:currency-change', { detail: { currency: alternateCurrency } }))
     closeDropdown()
   }
+
+  useEffect(() => {
+    const syncCurrency = (event) => {
+      const next = event.detail?.currency === 'coins' ? 'coins' : event.detail?.currency === 'rocoins' ? 'rocoins' : null
+      if (next) setCurrency(next)
+    }
+    window.addEventListener('rorisk:currency-change', syncCurrency)
+    return () => window.removeEventListener('rorisk:currency-change', syncCurrency)
+  }, [])
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -169,32 +260,12 @@ function NavbarCashier({ user, onOpenWallet }) {
       return
     }
     if (previousBalance === null || balance === previousBalance) return
-
-    playSound('balance', { volume: 0.5 })
-
-    const id = Date.now() + Math.random()
-    setBalanceChanges((changes) => [...changes, { id, amount: balance - previousBalance, phase: 'enter' }])
-    const firstFrame = requestAnimationFrame(() => {
-      animationFramesRef.current.delete(firstFrame)
-      const secondFrame = requestAnimationFrame(() => {
-        animationFramesRef.current.delete(secondFrame)
-        setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'open' } : change))
-      })
-      animationFramesRef.current.add(secondFrame)
-    })
-    animationFramesRef.current.add(firstFrame)
-
-    const leaveTimer = window.setTimeout(() => {
-      animationTimersRef.current.delete(leaveTimer)
-      setBalanceChanges((changes) => changes.map((change) => change.id === id ? { ...change, phase: 'leave' } : change))
-      const removeTimer = window.setTimeout(() => {
-        animationTimersRef.current.delete(removeTimer)
-        setBalanceChanges((changes) => changes.filter((change) => change.id !== id))
-      }, 200)
-      animationTimersRef.current.add(removeTimer)
-    }, 3000)
-    animationTimersRef.current.add(leaveTimer)
-  }, [balance, currency])
+    const amount = balance - previousBalance
+    const held = [...balanceNoticeHoldsRef.current.values()]
+      .some((hold) => !hold.currency || hold.currency === currency)
+    if (held) heldBalanceChangesRef.current[currency] += amount
+    else showBalanceChange(amount)
+  }, [balance, currency, showBalanceChange])
 
   useEffect(() => () => {
     for (const frame of animationFramesRef.current) cancelAnimationFrame(frame)
@@ -209,7 +280,7 @@ function NavbarCashier({ user, onOpenWallet }) {
             <div className={`balance-inner ${isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
               <div className="balance-inner-left" {...cashierScope}>
                 <img src={currencyIcon} alt="icon" {...cashierScope} />
-                <AmountNumber className="cashier-balance-text" amount={balance} />
+                <AmountNumber className="cashier-balance-text" amount={balance} duration={380} easeOut />
               </div>
               <div className="balance-inner-right" {...cashierScope}>
                 <span className={`currency-badge navbar-currency-badge ${isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
@@ -277,8 +348,10 @@ function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings, onOpenStati
   const menuRef = useRef(null)
   const { level, progress } = userLevelData(user)
   const avatar = user?.avatar_headshot || user?.avatar || '/default-avatar.png'
-  const rank = String(user?.rank || 'user').toLowerCase()
-  const hasStaffRank = rank !== 'user'
+  const rank = normalizeStaffRank(user?.rank)
+  const hasStaffRank = ['admin', 'mod', 'partner'].includes(rank)
+  const xpRank = xpRankForLevel(level)
+  const accentStyle = { '--rank-accent': rankAccent(rank, level) }
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -307,9 +380,9 @@ function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings, onOpenStati
   return (
     <div className="navbar-user" ref={menuRef} {...userScope}>
       <button className={`navbar-user-dropdown${expanded ? ' navbar-user-dropdown-open' : ''}`} type="button" aria-expanded={expanded} onClick={toggle} {...userScope}>
-        <div className="user-button" {...userScope}><div className="avatar-image user-pfp-image" data-v-6adb23f8="" {...userScope}><img src={avatar} alt="avatar" data-v-6adb23f8="" {...userScope} /></div></div>
+        <div className="user-button" style={accentStyle} {...userScope}><div className="avatar-image user-pfp-image" data-v-6adb23f8="" {...userScope}><img src={avatar} alt="avatar" data-v-6adb23f8="" {...userScope} /></div></div>
         <div className="user-meta" {...userScope}>
-          <div className="user-info" {...userScope}>{hasStaffRank ? <RankBadge rank={rank} /> : <div className={`box-level level-${levelTheme(level)}`} data-v-ff759fba=""><div className="level-inner" data-v-ff759fba="">{level}</div></div>}<div className="username" {...userScope}>{user?.username || 'Loading...'}</div></div>
+          <div className="user-info" {...userScope}>{hasStaffRank ? <RankBadge rank={rank} /> : <img className="user-rank-icon" src={xpRank.icon} alt={xpRank.name} {...userScope} />}<div className="username" {...userScope}>{user?.username || 'Loading...'}</div></div>
           <div className="user-xp" title={`Level ${level}`} {...userScope}><div className="user-xp-fill" style={{ width: `${progress}%` }} {...userScope} /></div>
         </div>
         <div className="icon-dropdown-wrapper" {...userScope}><SiteIcon name="chevron-down" className={`icon-dropdown${expanded ? ' icon-dropdown-open' : ''}`} {...userScope} /></div>
@@ -387,7 +460,7 @@ function Header({ pathname, user, onSignIn, onRegister, onSignOut, onOpenWallet,
             className="navbar-left-actions"
             bis_skin_checked="1"
           >
-            <a data-v-1cdc1483="" href="/rewards" aria-current={pathname === '/rewards' ? 'page' : undefined} className={`navbar-claim-cases${pathname === '/rewards' ? ' router-link-active' : ''}`}>
+            <a data-v-1cdc1483="" href="/welcome" aria-current={pathname === '/welcome' ? 'page' : undefined} className={`navbar-claim-cases${pathname === '/welcome' ? ' router-link-active' : ''}`}>
               <svg
                 data-v-1cdc1483=""
                 xmlns="http://www.w3.org/2000/svg"

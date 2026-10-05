@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import SiteIcon from '../components/Icons'
 
 const casesScope = { 'data-v-2696d139': '' }
@@ -8,6 +8,9 @@ const priceScope = { 'data-v-76f166bf': '' }
 const sortScope = { 'data-v-58a58ac8': '' }
 const overviewScope = { 'data-v-5e243141': '' }
 const boxScope = { 'data-v-0a362090': '' }
+const riskScope = { 'data-v-44aab034': '' }
+
+const riskTones = ['green', 'blue', 'yellow', 'orange']
 
 const priceOptions = [
   ['Any', 'Any'],
@@ -28,16 +31,31 @@ function Dropdown({ kind, value, options, open, onToggle, onSelect }) {
   </div>
 }
 
-function CaseCard({ box, currency }) {
+function CaseRiskBar({ bar }) {
+  if (!bar) return null
+  const markerValue = Number(bar.marker)
+  const marker = Number.isFinite(markerValue) ? Math.max(0, Math.min(100, markerValue)) : 50
+  const toneIndex = riskTones.indexOf(bar.tone)
+  const activeIndex = toneIndex >= 0 ? toneIndex : Math.min(3, Math.floor(marker / 25))
+
+  return <div className="cases-rarity-bar" {...riskScope}>
+    <div className="rarity-segments" {...riskScope}>{riskTones.map((tone, index) => <div className={`rarity-segment segment-${index}${index === activeIndex ? ` is-active tone-${tone}` : ''}`} key={tone} {...riskScope} />)}</div>
+    <div className="rarity-tick" style={{ left: `calc(${marker}% - 1.5px)` }} {...riskScope} />
+  </div>
+}
+
+const CaseCard = memo(function CaseCard({ box, currency, priority = false }) {
   const image = box.imageUrl
   const amount = currency === 'coins' ? box.coinAmount : box.rocoinAmount
+  const isNew = Array.isArray(box.categories) && box.categories.includes('new')
   return <a className="cases-box-element" href={`/cases/${box.caseId}`} {...boxScope}>
+    {isNew && <div className="box-new" {...boxScope}>New</div>}
     <div className="box-content" {...boxScope}>
-      <div className="box-image" {...boxScope}><img className="box-image-top" src={image} loading="lazy" decoding="async" alt="" {...boxScope} /><img className="box-image-glow" src={image} loading="lazy" decoding="async" alt="" {...boxScope} /></div>
-      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt={currency === 'coins' ? 'Coins' : 'RoCoins'} {...boxScope} /><span {...boxScope}>{Math.floor(Number(amount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div></div></div>
+      <div className="box-image" {...boxScope}><img className="box-image-top" src={image} width="130" height="130" loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : 'auto'} decoding="async" alt="" {...boxScope} /></div>
+      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt={currency === 'coins' ? 'Coins' : 'RoCoins'} {...boxScope} /><span {...boxScope}>{Math.floor(Number(amount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div><CaseRiskBar bar={box.rarityBar} /></div></div>
     </div>
   </a>
-}
+})
 
 function LoadingGrid() {
   return <div className="overview-loading" {...overviewScope}>{Array.from({ length: 24 }, (_, index) => <div className="loading-placeholder" key={index} {...overviewScope}><div className="placeholder-image" {...overviewScope} /><div className="placeholder-info" {...overviewScope}><div className="placeholder-name" {...overviewScope} /><div className="placeholder-price" {...overviewScope} /></div></div>)}</div>
@@ -101,11 +119,11 @@ function Cases() {
 
   const limiteds = filtered.filter((box) => box.type !== 'mm2')
   const mm2 = filtered.filter((box) => box.type === 'mm2')
-  const list = (items) => <div className="overview-list" {...overviewScope}>{items.map((box) => <CaseCard box={box} currency={currency} key={box.caseId} />)}</div>
+  const list = (items, prioritize = false) => <div className="overview-list" {...overviewScope}>{items.map((box, index) => <CaseCard box={box} currency={currency} priority={prioritize && index < 8} key={box.caseId} />)}</div>
 
   return <div className="cases" ref={root} {...casesScope}>
     <div className="cases-header" {...casesScope}><div className="cases-header-overview" {...headerScope}><div className="header-title" {...headerScope}><SiteIcon name="cases" {...headerScope} /><span {...headerScope}>Cases</span></div><div className="header-filters" {...headerScope}><div className="filters-search" {...headerScope}><div className="cases-filter-search" {...searchScope}><SiteIcon name="search" {...searchScope} /><input type="text" placeholder="Search for a case..." value={search} onChange={(event) => setSearch(event.target.value)} {...searchScope} /></div></div><div className="filters-price" {...headerScope}><Dropdown kind="Price Range" value={price} options={priceOptions} open={dropdown === 'price'} onToggle={() => setDropdown(dropdown === 'price' ? null : 'price')} onSelect={(value) => { setPrice(value); setDropdown(null) }} /></div><div className="filters-sort" {...headerScope}><Dropdown kind="Sort By" value={sort === 'highest' ? 'Highest' : 'Lowest'} options={[["Lowest", 'lowest'], ["Highest", 'highest']]} open={dropdown === 'sort'} onToggle={() => setDropdown(dropdown === 'sort' ? null : 'sort')} onSelect={(value) => { setSort(value); setDropdown(null) }} /></div></div></div></div>
-    <div className="cases-content" {...casesScope}><div className="cases-overview" {...overviewScope}>{loading ? <LoadingGrid /> : filtered.length ? <div className="overview-sections" {...overviewScope}>{limiteds.length > 0 && list(limiteds)}{limiteds.length > 0 && mm2.length > 0 && <div className="overview-separator" {...overviewScope}><div className="separator-line" {...overviewScope} /><div className="separator-label" {...overviewScope}><span className="separator-title" {...overviewScope}>Murder Mystery 2</span><span className="separator-subtitle" {...overviewScope}>Cases</span></div><div className="separator-line" {...overviewScope} /></div>}{mm2.length > 0 && list(mm2)}</div> : <div className="overview-empty fade-enter-active" {...overviewScope}>There currently are no cases with this filter.</div>}</div></div>
+    <div className="cases-content" {...casesScope}><div className="cases-overview" {...overviewScope}>{loading ? <LoadingGrid /> : filtered.length ? <div className="overview-sections" {...overviewScope}>{limiteds.length > 0 && list(limiteds, true)}{limiteds.length > 0 && mm2.length > 0 && <div className="overview-separator" {...overviewScope}><div className="separator-line" {...overviewScope} /><div className="separator-label" {...overviewScope}><span className="separator-title" {...overviewScope}>Murder Mystery 2</span><span className="separator-subtitle" {...overviewScope}>Cases</span></div><div className="separator-line" {...overviewScope} /></div>}{mm2.length > 0 && list(mm2)}</div> : <div className="overview-empty fade-enter-active" {...overviewScope}>There currently are no cases with this filter.</div>}</div></div>
   </div>
 }
 

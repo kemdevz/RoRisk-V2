@@ -41,7 +41,7 @@ function LevelBadge({ level }) {
 function RankBadge({ rank }) {
   const normalized = String(rank || 'user').toLowerCase()
   const hash = normalized === 'admin' ? 'f6df244d' : normalized === 'mod' ? '998a884b' : '0a259ddf'
-  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
 }
 
 function ChevronDown() {
@@ -214,16 +214,33 @@ function CountdownNumber({ value }) {
 }
 
 function CoinflipGameModal({ game, user, busy, onAction, onFairness }) {
-  const [now, setNow] = useState(0)
+  const initialNow = useRef(Date.now())
+  const timelineStart = useRef((() => {
+    const serverStart = game.startedAt ? new Date(game.startedAt).getTime() : initialNow.current
+    const serverElapsed = initialNow.current - serverStart
+    return game.state === 'countdown' && serverElapsed >= 0 && serverElapsed < 3000
+      ? initialNow.current
+      : serverStart
+  })())
+  const [now, setNow] = useState(initialNow.current)
   const lastCountdown = useRef(null)
   useEffect(() => {
     if (!game.startedAt) return undefined
-    let frame
-    const tick = () => { setNow(Date.now()); frame = requestAnimationFrame(tick) }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    let timer
+    const tick = () => {
+      const current = Date.now()
+      setNow(current)
+      const currentElapsed = Math.max(0, current - timelineStart.current)
+      if (currentElapsed >= 5500) return
+      const nextBoundary = currentElapsed < 3000
+        ? Math.min(3000 - currentElapsed, 1000 - currentElapsed % 1000)
+        : 5500 - currentElapsed
+      timer = window.setTimeout(tick, Math.max(16, nextBoundary + 8))
+    }
+    tick()
+    return () => window.clearTimeout(timer)
   }, [game.startedAt])
-  const elapsed = game.startedAt ? now - new Date(game.startedAt).getTime() : 0
+  const elapsed = game.startedAt ? Math.max(0, now - timelineStart.current) : 0
   const phase = game.state === 'created' ? 'created' : elapsed < 3000 ? 'countdown' : elapsed < 5500 ? 'rolling' : 'completed'
   const countdown = Math.min(3, Math.max(1, Math.ceil((3000 - elapsed) / 1000)))
   useEffect(() => {
@@ -382,7 +399,14 @@ function Coinflip({ user }) {
       const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to update this game.')
-      if (payload.user) window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: payload.user } }))
+      if (payload.user) {
+        const startedAt = payload.game?.startedAt ? new Date(payload.game.startedAt).getTime() : 0
+        const remainingAnimationMs = startedAt ? Math.max(0, startedAt + 5500 - Date.now()) : 0
+        if (remainingAnimationMs > 0) {
+          window.dispatchEvent(new CustomEvent('rorisk:balance-notification-hold', { detail: { id: `coinflip:${payload.game._id}`, currency: payload.game.currency, until: startedAt + 5500 } }))
+        }
+        window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: payload.user } }))
+      }
       if (payload.game) {
         setSelected((current) => current?._id === payload.game._id && !sameGame(current, payload.game) ? payload.game : current)
         setGames((current) => upsertGame(current, payload.game))
@@ -401,7 +425,7 @@ function Coinflip({ user }) {
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
   return <div className="coinflip" {...pageScope}><CoinflipControls user={user} currency={currency} busy={busy} onCreate={create} sort={sort} onSort={setSort} /><div className="coinflip-games" {...gamesScope}><div className="games-container" {...gamesScope}><div className="games-header" {...gamesScope}><div className="header-title" {...gamesScope}>Active Games: <span {...gamesScope}>{count}</span></div></div><div className="games-content" {...gamesScope}>{loading ? <div className="content-loading" {...gamesScope}>{Array.from({ length: 25 }, (_, index) => <div className="loading-placeholder" key={index} {...gamesScope} />)}</div> : sorted.length ? <div className="content-list" {...gamesScope}><div className="games-list" {...gamesScope}>{sorted.map((game, index) => <AnimatedCoinflipCard elementRef={(element) => setRowElement(game._id, element)} style={{ '--animation-delay': `${index * .05}s` }} key={game._id} game={game} user={user} busy={busy} onOpen={open} onBot={(selectedGame) => action(selectedGame, 'bot')} />)}</div></div> : <div className="content-empty" {...gamesScope} />}</div></div></div>
-    {selected && !fairness && <ModalAnimation label="Coinflip Game" onClose={close}><CoinflipGameModal game={selected} user={user} busy={busy} onAction={action} onFairness={openFairness} /></ModalAnimation>}
+    {selected && !fairness && <ModalAnimation label="Coinflip Game" onClose={close}><CoinflipGameModal key={`${selected._id}:${selected.startedAt || 'waiting'}`} game={selected} user={user} busy={busy} onAction={action} onFairness={openFairness} /></ModalAnimation>}
     {fairness && <ModalAnimation label="Game Fairness" onClose={() => setFairness(null)}><CoinflipFairGame game={fairness} onVerify={verifyGame} /></ModalAnimation>}
   </div>
 }

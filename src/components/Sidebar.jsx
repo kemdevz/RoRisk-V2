@@ -82,7 +82,7 @@ const profile = [
 
 function SidebarSection({ title, items, showLabels, pathname, onAction }) {
   const [open, setOpen] = useState(true)
-  const isActive = (href) => pathname === href || (['/cases', '/slots', '/live-casino'].includes(href) && pathname.startsWith(`${href}/`))
+  const isActive = (href) => pathname === href || (['/cases', '/battles', '/slots', '/live-casino'].includes(href) && pathname.startsWith(`${href}/`))
   return (
     <section className="sidebar-content" data-v-4fc2a52c="">
       {showLabels && (

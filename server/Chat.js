@@ -53,7 +53,7 @@ function publicUser(user) {
     avatar,
     coins: Math.max(0, Number(user.coins) || 0),
     rocoins: Math.max(0, Number(user.rocoins) || 0),
-    level: Math.min(100, Math.max(0, Number(user.level) || 0)),
+    level: Math.min(129, Math.max(0, Number(user.level) || 0)),
     rank: String(user.rank || 'user').toLowerCase(),
     email: user.email || null,
     joined_at: joinedAt,

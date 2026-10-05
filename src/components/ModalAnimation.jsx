@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 
 const scope = { 'data-v-7b35cc7e': '' }
 
-function ModalAnimation({ children, onClose, label, closeRequest = false }) {
+function ModalAnimation({ children, onClose, label, closeRequest = false, showClose = true }) {
   const [phase, setPhase] = useState('enter')
 
   useEffect(() => {
@@ -51,12 +51,12 @@ function ModalAnimation({ children, onClose, label, closeRequest = false }) {
           {...scope}
         >
           <div className="body-modal" role="dialog" aria-modal="true" aria-label={label} {...scope}>
-            <button className="close-btn" type="button" aria-label="Close" onClick={close} {...scope}>
+            {showClose && <button className="close-btn" type="button" aria-label="Close" onClick={close} {...scope}>
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" {...scope}>
                 <path d="M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </button>
+            </button>}
             <div className="modal-content-host" {...scope}>{children}</div>
           </div>
         </div>

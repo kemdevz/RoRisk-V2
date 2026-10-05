@@ -140,7 +140,7 @@ function Mines({ user }) {
         if (payload.game) { setMines(payload.game.mines_count); setAmount(formatAmount(payload.game.bet_amount)); setCurrency(payload.game.currency) }
       }
     }).catch(() => {})
-  }, [user])
+  }, [user?.uuid])
 
   const showWinPopup = useCallback(() => {
     setPopupPhase('from')

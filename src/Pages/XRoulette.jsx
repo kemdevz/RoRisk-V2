@@ -197,7 +197,7 @@ function LevelBadge({ level }) {
 function RankBadge({ rank }) {
   const normalized = String(rank || '').toLowerCase()
   const hash = normalized === 'admin' ? 'f6df244d' : normalized === 'mod' ? '998a884b' : '0a259ddf'
-  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
 }
 
 function AnimatedAmount({ value }) {

@@ -17,7 +17,6 @@ function ErrorIcon() {
 }
 
 function NotificationItem({ notification, onRemove }) {
-  const [remaining, setRemaining] = useState(DURATION)
   const [phase, setPhase] = useState('enter')
 
   const remove = useCallback(() => {
@@ -30,19 +29,11 @@ function NotificationItem({ notification, onRemove }) {
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => setPhase('open'))
     })
-    const expiresAt = Date.now() + DURATION
-    const interval = window.setInterval(() => {
-      const next = expiresAt - Date.now()
-      setRemaining(next)
-      if (next <= 0) {
-        window.clearInterval(interval)
-        remove()
-      }
-    }, 100)
+    const expiryTimer = window.setTimeout(remove, DURATION)
     return () => {
       cancelAnimationFrame(firstFrame)
       if (secondFrame) cancelAnimationFrame(secondFrame)
-      window.clearInterval(interval)
+      window.clearTimeout(expiryTimer)
     }
   }, [remove])
 
@@ -56,7 +47,7 @@ function NotificationItem({ notification, onRemove }) {
         <div className="text" {...itemScope}>{notification.message}</div>
       </div>
       <div className="countdown-bar" {...itemScope}>
-        <div className="countdown-progress" style={{ width: `${Math.max(0, remaining / DURATION * 100)}%` }} {...itemScope} />
+        <div className="countdown-progress" style={{ animationDuration: `${DURATION}ms` }} {...itemScope} />
       </div>
     </div>
   )

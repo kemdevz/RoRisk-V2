@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { attachRealtimeServer, broadcastRealtime, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
+import { handleBattlesRequest } from './Battles.js'
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000
 const MAX_BODY_BYTES = 64 * 1024
@@ -303,12 +304,33 @@ function baseCoinPair(source, fallback = 0) {
   return { coins, rocoins }
 }
 
+function calculatedCaseRiskLevel(row) {
+  const items = Array.isArray(row?.items) ? row.items : []
+  const casePrice = Math.max(0, Number(row?.coin_amount ?? row?.rocoin_amount ?? row?.amount) || 0)
+  let totalChance = 0
+  let losingChance = 0
+
+  for (const item of items) {
+    const explicitChance = Number.parseFloat(String(item?.chance ?? ''))
+    const chance = Number.isFinite(explicitChance) ? explicitChance : Math.max(0, Number(item?.tickets) || 0) / 1000
+    const value = Math.max(0, Number(item?.coinPrice ?? item?.coin_price ?? item?.price ?? item?.amount) || 0)
+    totalChance += chance
+    if (value < casePrice) losingChance += chance
+  }
+
+  return totalChance > 0 ? Math.round(Math.min(100, Math.max(0, losingChance / totalChance * 100)) * 100) / 100 : 50
+}
+
 function publicCase(row, includeItems = false, currency = 'rocoins') {
   const requestedCurrency = selectedCurrency(currency)
   const legacyBaseAmount = Number(row.rocoin_amount ?? row.amount) || 0
   const amounts = row.coin_amount == null
     ? baseCoinPair({}, legacyBaseAmount)
     : baseCoinPair({ coin_price: row.coin_amount, rocoin_price: row.rocoin_amount }, legacyBaseAmount)
+  const storedRiskLevel = row.risk_level == null ? Number.NaN : Number(row.risk_level)
+  const riskLevel = Number.isFinite(storedRiskLevel)
+    ? Math.max(0, Math.min(100, storedRiskLevel))
+    : calculatedCaseRiskLevel(row)
   const data = {
     caseId: row.case_id,
     name: row.name,
@@ -322,6 +344,11 @@ function publicCase(row, includeItems = false, currency = 'rocoins') {
     levelMin: row.level_min,
     imageUrl: row.image_url,
     sortOrder: row.sort_order,
+    riskLevel,
+    rarityBar: {
+      marker: riskLevel,
+      tone: riskLevel < 25 ? 'green' : riskLevel < 50 ? 'blue' : riskLevel < 75 ? 'yellow' : 'orange',
+    },
   }
   if (includeItems) {
     data.items = (Array.isArray(row.items) ? row.items : []).map((item, index) => {
@@ -1155,11 +1182,230 @@ async function completeAuthProfile(env, accessToken) {
   }, 'uuid')
 }
 
+async function affiliateRow(env, userUuid) {
+  const query = new URLSearchParams({ user_uuid: `eq.${userUuid}`, select: '*', limit: '1' })
+  const rows = await supabaseRequest(env, `/rest/v1/rorisk_affiliates?${query}`)
+  return rows?.[0] || null
+}
+
+async function affiliateReferrer(env, row) {
+  if (!row?.referrer_user_uuid) return null
+  const query = new URLSearchParams({
+    uuid: `eq.${row.referrer_user_uuid}`,
+    select: 'uuid,roblox_id,username,avatar_headshot,rank,level',
+    limit: '1',
+  })
+  const rows = await supabaseRequest(env, `/rest/v1/rorisk_users?${query}`)
+  return rows?.[0] || null
+}
+
+function publicAffiliate(row, referrer = null) {
+  return {
+    code: row?.affiliate_code || '',
+    referrer: row?.referrer_user_uuid || null,
+    redeemedCode: referrer?.affiliate_code || '',
+    referredAt: row?.referred_at || null,
+    referredUsers: Array.isArray(row?.referred_users) ? row.referred_users : [],
+    rewardCasesClaimed: Number(row?.reward_cases_claimed) || 0,
+    rewardCaseClaims: Array.isArray(row?.reward_case_claims) ? row.reward_case_claims : [],
+    deposit: Number(row?.total_deposited) || 0,
+    earned: Number(row?.total_earnings) || 0,
+    available: Number(row?.available_earnings) || 0,
+    claimed: Number(row?.claimed_earnings) || 0,
+    referrerUser: referrer?.user ? {
+      uuid: referrer.user.uuid,
+      username: referrer.user.username,
+      avatar: referrer.user.avatar_headshot,
+    } : null,
+  }
+}
+
+async function affiliateState(env, userUuid) {
+  const row = await affiliateRow(env, userUuid)
+  if (!row?.referrer_user_uuid) return { row, data: publicAffiliate(row) }
+  const user = await affiliateReferrer(env, row)
+  const referrerRow = await affiliateRow(env, row.referrer_user_uuid)
+  return { row, data: publicAffiliate(row, { user, affiliate_code: referrerRow?.affiliate_code || '' }) }
+}
+
+const WELCOME_CASE_ROW = Object.freeze({
+  case_id: '6abc52a32512db6b65a8f5c9',
+  name: 'Welcome Chicken',
+  slug: 'welcome-chicken',
+  coin_amount: 2,
+  rocoin_amount: 12,
+  type: 'site',
+  categories: ['rewards'],
+  level_min: null,
+  image_url: '/Welcome/welcome-chicken.4c912e1c.png',
+  sort_order: 0,
+  active: true,
+  risk_level: 99.3216,
+  items: [
+    {
+      id: '6abc55f9f1205813968830f2',
+      itemId: '685a0c23831c062328d2d390',
+      name: "Telamon's Chicken Suit",
+      image: '/api/case-images/items/24112667.png',
+      index: 1,
+      tickets: 1,
+      chance: '0.001%',
+      color: 'yellow',
+      price: 125000,
+      coinPrice: 125000,
+      rocoinPrice: 625000,
+    },
+    {
+      id: '6abc55f9f1205813968830f3',
+      itemId: '685a0c57831c062328d2e34d',
+      name: 'Fried Chicken Egg',
+      image: '/api/case-images/items/4786883113.png',
+      index: 2,
+      tickets: 99999,
+      chance: '99.999%',
+      color: 'blue',
+      price: 1,
+      coinPrice: 1,
+      rocoinPrice: 5,
+    },
+  ],
+})
+
+async function welcomeCase(env, currency) {
+  const query = new URLSearchParams({ slug: 'eq.welcome-chicken', active: 'eq.true', select: '*', limit: '1' })
+  const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
+  if (rows?.[0]) return publicCase(rows[0], true, currency)
+  return publicCase(WELCOME_CASE_ROW, true, currency)
+}
+
+function chooseWelcomeOutcome(caseData) {
+  return demoCaseOutcomes(caseData, 1)[0]
+}
+
 async function handleRequest(request, response, env) {
   const url = new URL(request.url, 'http://localhost')
   if (!url.pathname.startsWith('/api/')) return false
 
   try {
+    if (url.pathname.startsWith('/api/battles')) {
+      return await handleBattlesRequest({ request, response, url, env, readJson, sendJson, supabaseRequest, requestSessionUser, startRealtimeSession, broadcastRealtime })
+    }
+    if (request.method === 'GET' && url.pathname === '/api/welcome') {
+      const sessionUser = requestSessionUser(request, env)
+      const currency = selectedCurrency(url.searchParams.get('currency'))
+      const caseData = await welcomeCase(env, currency)
+      let affiliate = publicAffiliate(null)
+      let hasRewardCaseDeposit = false
+      if (sessionUser?.uuid) {
+        affiliate = (await affiliateState(env, sessionUser.uuid)).data
+        const depositQuery = new URLSearchParams({
+          user_uuid: `eq.${sessionUser.uuid}`,
+          credited: 'eq.true',
+          select: 'usd_amount',
+        })
+        const deposits = await supabaseRequest(env, `/rest/v1/rorisk_crypto_deposits?${depositQuery}`)
+        hasRewardCaseDeposit = (deposits || []).reduce((total, deposit) => total + Number(deposit.usd_amount || 0), 0) >= 10
+      }
+      sendJson(response, 200, { case: caseData, affiliate, hasRewardCaseDeposit, caseTotal: 4 })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/welcome/open') {
+      const body = await readJson(request)
+      const currency = selectedCurrency(body.currency)
+      const caseData = await welcomeCase(env, currency)
+      if (!caseData?.items?.length) throw new Error('Reward case is not available yet.')
+      const outcome = chooseWelcomeOutcome(caseData)
+      const item = outcome.item
+      const chance = Number.parseFloat(String(item?.chance || '0').replace('%', '')) || 0
+      const itemValue = Number(currency === 'coins' ? item?.coinPrice : item?.rocoinPrice) || 0
+      const caseValue = Number(currency === 'coins' ? caseData?.coinAmount : caseData?.rocoinAmount) || 0
+      const openingRiskSpin = body.riskSpin === true && chance < 10 && itemValue > caseValue
+      if (body.demo === true) {
+        sendJson(response, 200, { opening: { demo: true, outcome: outcome.outcome, item, riskSpin: openingRiskSpin, updatedAt: new Date().toISOString() } })
+        return true
+      }
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/open_rorisk_welcome_case', {
+        method: 'POST',
+        body: JSON.stringify({ p_user_uuid: sessionUser.uuid, p_currency: currency, p_item: item }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      sendJson(response, 200, { ...result, opening: { demo: false, outcome: outcome.outcome, item, riskSpin: openingRiskSpin, updatedAt: new Date().toISOString() } })
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/affiliates') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const page = Math.max(1, Math.trunc(Number(url.searchParams.get('page'))) || 1)
+      const limit = Math.min(50, Math.max(1, Math.trunc(Number(url.searchParams.get('limit'))) || 50))
+      const state = await affiliateState(env, sessionUser.uuid)
+      const rowsQuery = new URLSearchParams({
+        referrer_user_uuid: `eq.${sessionUser.uuid}`,
+        select: '*',
+        order: 'referred_at.desc',
+      })
+      const referredRows = await supabaseRequest(env, `/rest/v1/rorisk_affiliates?${rowsQuery}`, {
+        headers: { Range: `${(page - 1) * limit}-${page * limit - 1}`, Prefer: 'count=exact' },
+      })
+      const referred = await Promise.all((referredRows || []).map(async (entry) => ({
+        user: await affiliateReferrer(env, { referrer_user_uuid: entry.user_uuid }),
+        wagered: Number(entry.total_wagered) || 0,
+        wageredRocoins: Number(entry.total_wagered_rocoins) || 0,
+        deposited: Number(entry.total_deposited) || 0,
+        earned: Math.max(0, Math.floor((Number(entry.total_deposited) || 0) * 0.1)),
+        referredAt: entry.referred_at,
+      })))
+      const countQuery = new URLSearchParams({ referrer_user_uuid: `eq.${sessionUser.uuid}`, select: 'user_uuid' })
+      const allRows = await supabaseRequest(env, `/rest/v1/rorisk_affiliates?${countQuery}`)
+      const totalUsers = allRows?.length || 0
+      const totalPages = Math.max(1, Math.ceil(totalUsers / limit))
+      const referredDepositTotal = (referredRows || []).reduce((total, entry) => total + Number(entry.total_deposited || 0), 0)
+      sendJson(response, 200, {
+        data: { ...state.data, deposit: referredDepositTotal },
+        referred,
+        pagination: { currentPage: page, totalPages, totalUsers, hasPrevPage: page > 1, hasNextPage: page < totalPages },
+      })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/affiliates/code') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      await supabaseRequest(env, '/rest/v1/rpc/set_rorisk_affiliate_code', {
+        method: 'POST',
+        body: JSON.stringify({ p_user_uuid: sessionUser.uuid, p_code: String(body.code || '').trim() }),
+      })
+      sendJson(response, 200, { success: true, affiliate: (await affiliateState(env, sessionUser.uuid)).data })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/affiliates/redeem') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const body = await readJson(request)
+      await supabaseRequest(env, '/rest/v1/rpc/redeem_rorisk_affiliate_code', {
+        method: 'POST',
+        body: JSON.stringify({ p_user_uuid: sessionUser.uuid, p_code: String(body.code || '').trim() }),
+      })
+      sendJson(response, 200, { success: true, affiliate: (await affiliateState(env, sessionUser.uuid)).data })
+      return true
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/affiliates/claim') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) throw new Error('Please sign in to perform this action.')
+      const result = await supabaseRequest(env, '/rest/v1/rpc/claim_rorisk_affiliate_earnings', {
+        method: 'POST',
+        body: JSON.stringify({ p_user_uuid: sessionUser.uuid }),
+      })
+      if (result?.user) startRealtimeSession(request, response, env, result.user)
+      sendJson(response, 200, result)
+      return true
+    }
     if (request.method === 'GET' && url.pathname === '/api/payments/oxapay/currencies') {
       const [currenciesResponse, pricesResponse] = await Promise.all([
         fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
@@ -2134,7 +2380,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:cases|dice|blackjack|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:battles|cases|welcome|affiliates|dice|blackjack|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance

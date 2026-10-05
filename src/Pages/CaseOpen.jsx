@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import SiteIcon from '../components/Icons'
@@ -55,6 +56,21 @@ function rarityKey(item) {
     return 'godly'
   }
   return 'common'
+}
+
+function legacyColorKey(item) {
+  const color = String(item?.color || '').trim().toLowerCase()
+  return ['blue', 'green', 'purple', 'red', 'yellow', 'default'].includes(color) ? color : ''
+}
+
+function itemVisualClass(item) {
+  const color = legacyColorKey(item)
+  return color ? `element-${color}` : `element-rarity-${rarityKey(item)}`
+}
+
+function itemGlowClass(item) {
+  const color = legacyColorKey(item)
+  return color ? `glow-${color}` : `glow-rarity-${rarityKey(item)}`
 }
 
 function displayItemName(item) {
@@ -215,9 +231,8 @@ function Arrow({ direction }) {
 
 function Reel({ items, style, winnerVisible, currency }) {
   return <div className="cases-reel" style={style} {...reelScope}>{items.map((item, index) => {
-    const rarity = rarityKey(item)
     const winner = index === 60 && winnerVisible
-    return <div className={`reel-element element-rarity-${rarity}${index === (winnerVisible ? 60 : 20) ? ' element-active' : ''}${winner ? ' element-winner' : ''}`} key={`${index}-${item?.index || item?.name}`} {...reelScope}>
+    return <div className={`reel-element ${itemVisualClass(item)}${index === (winnerVisible ? 60 : 20) ? ' element-active' : ''}${winner ? ' element-winner' : ''}`} key={`${index}-${item?.index || item?.name}`} {...reelScope}>
       <div className="element-vector-container" {...reelScope}><Pattern scope={reelScope} className="pattern-bg from-colored-text position-absolute" /></div>
       {item && <div className="element-image" {...reelScope}><img src={item.image} alt="" {...reelScope} /><div className="element-glow" {...reelScope} /></div>}
       {winner && <div className="element-info" {...reelScope}><span {...reelScope}>{displayItemName(item)}</span><div className="info-amount" {...reelScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="icon" {...reelScope} /><div className="amount-value" {...reelScope}>{formatAmount(itemPrice(item, currency))}</div></div></div>}
@@ -225,8 +240,8 @@ function Reel({ items, style, winnerVisible, currency }) {
   })}</div>
 }
 
-function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency }) {
-  return <div ref={spinnerRef} className={`cases-spinner spinner-${count}`} {...pageScope} {...spinnerScope}>
+function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, variant = '' }) {
+  return <div ref={spinnerRef} className={`cases-spinner spinner-${count}${variant ? ` spinner-${variant}` : ''}`} {...pageScope} {...spinnerScope}>
     {count === 1 ? <><div className="shadow-left" {...spinnerScope} /><div className="shadow-right" {...spinnerScope} /></> : <><div className="shadow-top" {...spinnerScope} /><div className="shadow-bottom" {...spinnerScope} /></>}
     {reels.map((reel, index) => <div className="inner-wheel" key={index} {...spinnerScope}>
       <canvas className="confetti-canvas" {...spinnerScope} />
@@ -238,7 +253,7 @@ function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency }) 
 }
 
 function FastIcon() {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" {...controlsScope}><path d="M16.7971 8.71966L10.6931 8.74433C10.542 8.74493 10.444 8.57326 10.5127 8.42847L13.8866 1.31761C13.9881 1.1038 13.7397 0.897073 13.573 1.05657L3.06811 11.1056C2.9301 11.2376 3.01573 11.4833 3.20036 11.485L8.77294 11.5363C8.9182 11.5376 9.01459 11.6989 8.95548 11.8418L6.12076 18.6931C6.03288 18.9055 6.27472 19.0972 6.43754 18.9451L16.9304 9.10043C17.0712 8.96834 16.9839 8.71892 16.7971 8.71966Z" {...controlsScope} /></svg>
+  return <svg className="toggle-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" {...controlsScope}><path d="M16.7971 8.71966L10.6931 8.74433C10.542 8.74493 10.444 8.57326 10.5127 8.42847L13.8866 1.31761C13.9881 1.1038 13.7397 0.897073 13.573 1.05657L3.06811 11.1056C2.9301 11.2376 3.01573 11.4833 3.20036 11.485L8.77294 11.5363C8.9182 11.5376 9.01459 11.6989 8.95548 11.8418L6.12076 18.6931C6.03288 18.9055 6.27472 19.0972 6.43754 18.9451L16.9304 9.10043C17.0712 8.96834 16.9839 8.71892 16.7971 8.71966Z" {...controlsScope} /></svg>
 }
 
 const confettiColors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3', '#FF1493', '#00CED1', '#FFD700', '#FF69B4', '#00FF7F']
@@ -283,7 +298,7 @@ function launchConfetti(anchor, index) {
   })
   parent.appendChild(canvas)
 
-  const instance = confetti.create(canvas)
+  const instance = confetti.create(canvas, { resize: true, useWorker: true })
   const active = { instance, fadeTimer: null, removeTimer: null }
   activeConfetti.set(canvas, active)
   instance({ particleCount: 100, spread: 70, origin: { x: 0.5, y: 0.5 }, colors: confettiColors, scalar: 1.2 })
@@ -300,16 +315,22 @@ function ItemCard({ item, items, currency }) {
   const chance = chanceNumber(item)
   const ticketRange = useMemo(() => {
     const sorted = [...items].sort((left, right) => chanceNumber(left) - chanceNumber(right))
-    const position = sorted.indexOf(item)
+    const position = sorted.findIndex((entry) =>
+      entry === item ||
+      (entry?.index != null && item?.index != null && Number(entry.index) === Number(item.index)) ||
+      (entry?.name === item?.name &&
+        (entry?.image || entry?.imageUrl || '') === (item?.image || item?.imageUrl || '') &&
+        chanceNumber(entry) === chance),
+    )
     if (position < 0) return null
     const first = Math.round(sorted.slice(0, position).reduce((sum, entry) => sum + chanceNumber(entry) * 1000, 0)) + 1
     const last = first + Math.round(chance * 1000) - 1
     return `${first} - ${last}`
   }, [item, items, chance])
-  return <div className={`cases-item-element element-rarity-${rarity}`} onMouseEnter={() => setShowRange(true)} onMouseLeave={() => setShowRange(false)} {...itemScope}>
+  return <div className={`cases-item-element ${itemVisualClass(item)}`} onMouseEnter={() => setShowRange(true)} onMouseLeave={() => setShowRange(false)} {...itemScope}>
     <div className="inner-percent" {...itemScope}><div className="percent-text" {...itemScope}><span {...itemScope}>{showRange && ticketRange ? ticketRange : `${chance}%`}</span></div></div>
     <div className="inner-vector-container" {...itemScope}><Pattern scope={itemScope} chroma={rarity === 'chroma'} className={`pattern-bg position-absolute${rarity === 'chroma' ? ' pattern-chroma' : ''}`} /></div>
-    <div className="inner-image" {...itemScope}><img src={item.image} alt="" {...itemScope} /><div className={`inner-glow glow-rarity-${rarity}`} {...itemScope} /></div>
+    <div className="inner-image" {...itemScope}><img src={item.image} alt="" {...itemScope} /><div className={`inner-glow ${itemGlowClass(item)}`} {...itemScope} /></div>
     <div className="inner-info" {...itemScope}><div className="inner-name" {...itemScope}>{displayItemName(item)}</div><div className="inner-price" {...itemScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="icon" {...itemScope} /><div className="price-value" {...itemScope}><span {...itemScope}>{formatAmount(itemPrice(item, currency))}</span></div></div></div>
   </div>
 }
@@ -318,7 +339,8 @@ function CaseOpen({ caseId, user, onSignIn }) {
   const [caseData, setCaseData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [count, setCount] = useState(1)
-  const [fast, setFast] = useState(true)
+  const [fast, setFast] = useState(false)
+  const [riskSpin, setRiskSpin] = useState(true)
   const [requesting, setRequesting] = useState(false)
   const [running, setRunning] = useState(false)
   const [winnerVisible, setWinnerVisible] = useState(false)
@@ -514,14 +536,14 @@ function CaseOpen({ caseId, user, onSignIn }) {
     }
     try {
       if (demo) {
-        await spin({ demo: true, updatedAt: new Date().toISOString(), outcomes: Array.from({ length: count }, () => ({ outcome: Math.floor(Math.random() * 100000) + 1, item: pickVisualItem(caseData.items) })) })
+        await spin({ demo: true, updatedAt: new Date().toISOString(), outcomes: Array.from({ length: count }, () => ({ outcome: Math.floor(Math.random() * 100000) + 1, item: pickVisualItem(caseData.items), riskSpin })) })
         return
       }
       setRequesting(true)
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/open`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, demo, currency, clientSeed: getFairClientSeed(user) }),
+        body: JSON.stringify({ count, demo, currency, riskSpin, clientSeed: getFairClientSeed(user) }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to open this case.')
@@ -550,10 +572,15 @@ function CaseOpen({ caseId, user, onSignIn }) {
         <div className="cases-box" {...pageScope}>
           <Spinner count={count} reels={reels} styles={styles} winnerVisible={winnerVisible} spinnerRef={spinnerRef} currency={currency} />
           <div className={`cases-controls${running || requesting ? ' controls-disabled' : ''}`} {...pageScope} {...controlsScope}><div className="controls-bet" {...controlsScope}>
-            <div className="controls-count" {...controlsScope}>{[1, 2, 3, 4].map((value) => <button className={count === value ? 'button-active' : ''} type="button" disabled={running || requesting} onClick={() => setCount(value)} key={value} {...controlsScope}>{value}x</button>)}</div>
-            <button className="button-bet" type="button" disabled={running || requesting} onClick={() => openCase(false)} {...controlsScope}>Open {count} Case <div className="inner-amount" {...controlsScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="icon" {...controlsScope} /><div className="amount-value" {...controlsScope}><span {...controlsScope}>{formatAmount(total)}</span></div></div></button>
-            <button className="button-demo" type="button" disabled={running || requesting} onClick={() => openCase(true)} {...controlsScope}>Demo Spin</button>
-            <div className="controls-fast-spin" {...controlsScope}><button className={`button-fast-spin${fast ? ' button-active' : ''}`} type="button" disabled={running || requesting} aria-label="Fast mode" onClick={() => setFast((value) => !value)} {...controlsScope}><FastIcon /></button></div>
+            <div className="controls-left" {...controlsScope}><div className="controls-count" {...controlsScope}>{[1, 2, 3, 4].map((value) => <button className={count === value ? 'button-active' : ''} type="button" disabled={running || requesting} onClick={() => setCount(value)} key={value} {...controlsScope}>{value}x</button>)}</div></div>
+            <div className="controls-center" {...controlsScope}>
+              <button className="button-bet" type="button" disabled={running || requesting} onClick={() => openCase(false)} {...controlsScope}>Open {count} Case <div className="inner-amount" {...controlsScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="icon" {...controlsScope} /><div className="amount-value" {...controlsScope}><span {...controlsScope}>{formatAmount(total)}</span></div></div></button>
+              <button className="button-demo" type="button" disabled={running || requesting} onClick={() => openCase(true)} {...controlsScope}>Demo Spin</button>
+            </div>
+            <div className="controls-toggles" {...controlsScope}>
+              <button className={`button-toggle${fast ? ' is-on' : ''}`} type="button" disabled={running || requesting} aria-pressed={fast} onClick={() => setFast((value) => !value)} {...controlsScope}><FastIcon /><span {...controlsScope}>Fast Spin</span><span className={`cases-switch cases-switch-fast${fast ? ' is-on' : ''}`} aria-hidden="true" {...controlsScope} /></button>
+              <button className={`button-toggle${riskSpin ? ' is-on' : ''}`} type="button" disabled={running || requesting} aria-pressed={riskSpin} onClick={() => setRiskSpin((value) => !value)} {...controlsScope}><img className="toggle-icon" src="/img/battles/risk-spin.png" alt="" {...controlsScope} /><span {...controlsScope}>Risk Spin</span><span className={`cases-switch cases-switch-risk${riskSpin ? ' is-on' : ''}`} aria-hidden="true" {...controlsScope} /></button>
+            </div>
           </div></div>
           <div className="box-items" {...pageScope}><div className="items-header" {...pageScope}>Case Items</div><div className="items-content" {...pageScope}>{items.map((item) => <ItemCard item={item} items={items} currency={currency} key={item.index || item.name} />)}</div></div>
         </div>
@@ -563,4 +590,5 @@ function CaseOpen({ caseId, user, onSignIn }) {
   </div>
 }
 
+export { ItemCard, Pattern, Spinner, clearConfettiCanvases, createReel, launchConfetti, reelGeometry, pickVisualItem }
 export default CaseOpen

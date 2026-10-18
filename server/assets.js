@@ -6,6 +6,11 @@ export async function handleAssetsRequest({ request, response, url, env, api }) 
         sendJson(response, 404, { error: 'Case image not found.' })
         return true
       }
+      const itemImage = objectPath.match(/^items\/(\d+)\.png$/)
+      if (itemImage) {
+        await sendLimitedImage(response, Number(itemImage[1]))
+        return true
+      }
       await sendStoredImage(response, env, 'case-images', objectPath, 'Case')
       return true
     }

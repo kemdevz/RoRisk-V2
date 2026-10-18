@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
-import { createRainService } from './Rain.js'
+import { createRainService } from './rain.js'
 
 const REALTIME_PATH = '/api/realtime'
 const ROOMS = new Set(['en', 'tr', 'es', 'ru', 'de'])

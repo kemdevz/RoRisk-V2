@@ -34,13 +34,13 @@ export async function handleCasesRequest({ request, response, url, env, api }) {
       const body = await readJson(request)
       const count = Math.trunc(Number(body.count))
       if (![1, 2, 3, 4].includes(count)) throw new Error('Select between 1 and 4 cases.')
-      const query = new URLSearchParams({ case_id: `eq.${caseOpenRoute[1]}`, active: 'eq.true', select: '*' })
-      const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
-      if (!rows?.[0]) throw new Error('This case could not be found.')
       const currency = selectedCurrency(body.currency)
-      const caseData = publicCase(rows[0], true, currency)
 
       if (body.demo === true) {
+        const query = new URLSearchParams({ case_id: `eq.${caseOpenRoute[1]}`, active: 'eq.true', select: '*' })
+        const rows = await supabaseRequest(env, `/rest/v1/rorisk_cases?${query}`)
+        if (!rows?.[0]) throw new Error('This case could not be found.')
+        const caseData = publicCase(rows[0], true, currency)
         sendJson(response, 200, {
           opening: {
             uuid: `demo-${randomBytes(12).toString('hex')}`,
@@ -63,7 +63,7 @@ export async function handleCasesRequest({ request, response, url, env, api }) {
         method: 'POST',
         body: JSON.stringify({
           p_user_uuid: sessionUser.uuid,
-          p_case_id: caseData.caseId,
+          p_case_id: caseOpenRoute[1],
           p_case_count: count,
           p_currency: currency,
           p_client_seed: clientSeed,

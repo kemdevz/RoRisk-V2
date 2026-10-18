@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
-import { attachRealtimeServer, broadcastRealtime, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './Chat.js'
-import { handleBattlesRequest } from './Battles.js'
+import { attachRealtimeServer, broadcastRealtime, clearRealtimeSessionCookie, createRealtimeSession, readRealtimeSession, setRealtimeSessionCookie } from './chat.js'
+import { handleBattlesRequest } from './battles.js'
 import { handleAffiliatesRequest } from './affiliates.js'
 import { handleAssetsRequest } from './assets.js'
 import { handleAuthRequest } from './auth.js'

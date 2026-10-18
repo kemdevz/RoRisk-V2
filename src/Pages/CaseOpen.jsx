@@ -468,17 +468,27 @@ function CaseOpen({ caseId, user, onSignIn }) {
     return () => window.cancelAnimationFrame(animationFrame)
   }, [count, running])
 
-  const spin = useCallback(async (opening, nextUser) => {
-    const outcomes = Array.isArray(opening?.outcomes) ? opening.outcomes : []
-    if (outcomes.length !== count) throw new Error('The case result was incomplete.')
+  const spin = useCallback(async (openingSource) => {
+    const pending = typeof openingSource?.then === 'function'
+    const openingTask = pending
+      ? Promise.resolve(openingSource).then((value) => ({ value }), (error) => ({ error }))
+      : null
+    let result = pending ? null : openingSource
+    let opening = result?.opening || result
+    let nextUser = result?.user
+    let outcomes = Array.isArray(opening?.outcomes) ? opening.outcomes : []
+    if (!pending && outcomes.length !== count) throw new Error('The case result was incomplete.')
     clearTimers()
     clearConfettiCanvases(spinnerRef.current)
     positionReels(20)
     setRunning(true)
     setWinnerVisible(false)
-    const openingId = opening.uuid || opening._id || Date.now()
-    const reelSeed = `${openingId}${outcomes[0]?.outcome ?? ''}`
-    setReels(outcomes.map((outcome, index) => createReel(
+    const visualOutcomes = pending
+      ? Array.from({ length: count }, () => ({ outcome: Math.floor(Math.random() * 100000) + 1, item: pickVisualItem(caseData.items) }))
+      : outcomes
+    const openingId = opening?.uuid || opening?._id || `pending-${Date.now()}`
+    const reelSeed = `${openingId}${visualOutcomes[0]?.outcome ?? ''}`
+    setReels(visualOutcomes.map((outcome, index) => createReel(
       caseData.items,
       outcome.item,
       `${reelSeed}${index + 1}`,
@@ -487,12 +497,8 @@ function CaseOpen({ caseId, user, onSignIn }) {
 
     await new Promise((resolve) => window.setTimeout(resolve, 100))
 
-    const updatedAt = opening.updatedAt || opening.updated_at || opening.completed_at || opening.created_at
-    const normalDuration = updatedAt
-      ? Math.max(0, new Date(updatedAt).getTime() + 5000 - Date.now()) / 1010
-      : 5
-    const durations = outcomes.map((outcome, index) => {
-      const baseDuration = fast ? 1.3 : normalDuration
+    const durations = visualOutcomes.map((outcome, index) => {
+      const baseDuration = fast ? 1.3 : 4.85
       if (count === 1) return baseDuration
       const durationRandom = seededRandom(`${openingId}${index}dur${outcome.outcome || 0}`)
       return Math.max(0, baseDuration + durationRandom() * 0.5 - 0.25)
@@ -500,11 +506,29 @@ function CaseOpen({ caseId, user, onSignIn }) {
     const geometry = reelGeometry(spinnerRef.current, count > 1)
     if (!geometry) throw new Error('The case reel could not be measured.')
     const itemSpacing = geometry.itemSpacing
-    const jitters = outcomes.map((outcome, index) => {
+    const jitters = visualOutcomes.map((outcome, index) => {
       const animationRandom = seededRandom(`${openingId}${index}anim${outcome.outcome || 0}`)
       return Math.floor(animationRandom() * 7 + 1) * itemSpacing / 8
     })
+    const transitionStartedAt = performance.now()
     positionReels(60, durations.map((duration) => `transform ${duration}s cubic-bezier(0.1, 0.6, 0.3, 1)`), jitters)
+
+    if (openingTask) {
+      const resolved = await openingTask
+      if (resolved.error) throw resolved.error
+      result = resolved.value
+      opening = result?.opening || result
+      nextUser = result?.user
+      outcomes = Array.isArray(opening?.outcomes) ? opening.outcomes : []
+      if (outcomes.length !== count) throw new Error('The case result was incomplete.')
+      setReels((current) => current.map((reel, index) => {
+        const next = [...reel]
+        next[60] = outcomes[index].item
+        return next
+      }))
+    }
+
+    const remaining = (milliseconds) => Math.max(0, milliseconds - (performance.now() - transitionStartedAt))
     durations.forEach((duration, index) => {
       timers.current.push(window.setTimeout(() => {
         settleReel(index, 'transform 0.25s cubic-bezier(0.1, 0.6, 0.3, 1)')
@@ -518,14 +542,14 @@ function CaseOpen({ caseId, user, onSignIn }) {
             launchConfetti(spinnerRef.current?.querySelectorAll('.confetti-canvas')[index], index)
           }
         }, 300))
-      }, duration * 1000 + 200))
+      }, remaining(duration * 1000 + 200)))
     })
     const longestDuration = Math.max(...durations)
     timers.current.push(window.setTimeout(() => {
       setWinnerVisible(true)
       setRunning(false)
       if (nextUser) window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: nextUser } }))
-    }, longestDuration * 1000 + 500))
+    }, remaining(longestDuration * 1000 + 500)))
   }, [caseData, clearTimers, count, currency, fast, settleReel, positionReels])
 
   const openCase = async (demo) => {
@@ -537,20 +561,28 @@ function CaseOpen({ caseId, user, onSignIn }) {
     }
     try {
       if (demo) {
-        await spin({ demo: true, updatedAt: new Date().toISOString(), outcomes: Array.from({ length: count }, () => ({ outcome: Math.floor(Math.random() * 100000) + 1, item: pickVisualItem(caseData.items), riskSpin })) })
+        await spin({ opening: { demo: true, updatedAt: new Date().toISOString(), outcomes: Array.from({ length: count }, () => ({ outcome: Math.floor(Math.random() * 100000) + 1, item: pickVisualItem(caseData.items), riskSpin })) } })
         return
       }
       setRequesting(true)
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/open`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, demo, currency, riskSpin, clientSeed: getFairClientSeed(user) }),
-      })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Unable to open this case.')
-      incrementFairNonce(user, count)
-      await spin(payload.opening, payload.user)
+      const openingRequest = fetch(`/api/cases/${encodeURIComponent(caseId)}/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count, demo, currency, riskSpin, clientSeed: getFairClientSeed(user) }),
+        })
+        .then(async (response) => {
+          const payload = await response.json()
+          if (!response.ok) throw new Error(payload.error || 'Unable to open this case.')
+          incrementFairNonce(user, count)
+          return { opening: payload.opening, user: payload.user }
+        })
+      await spin(openingRequest)
     } catch (error) {
+      clearTimers()
+      setRunning(false)
+      setWinnerVisible(false)
+      setReels(Array.from({ length: count }, (_, index) => createReel(caseData.items, null, `${Date.now()}-${index}`)))
+      window.requestAnimationFrame(() => positionReels(20, 'none'))
       notify({ type: 'error', message: error.message || 'Unable to open this case.' })
     } finally {
       setRequesting(false)
@@ -564,7 +596,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
 
   return <div className="cases" {...casesScope}>
     <div className="cases-content" {...casesScope}>
-      {loading ? <div className="case-page-state" {...pageScope}>Loading case...</div> : !caseData ? <div className="case-page-state" {...pageScope}>This case could not be found.</div> : <div className="cases-box-container" {...pageScope}>
+      {loading ? null : !caseData ? <div className="case-page-state" {...pageScope}>This case could not be found.</div> : <div className="cases-box-container" {...pageScope}>
         <div className="cases-header-box" {...pageScope} {...headerScope}>
           <a className="link-back" href={isOtherCase ? '/rewards' : '/cases'} {...headerScope}><SiteIcon name="back" {...headerScope} /> Go Back</a>
           <div className="box-mid" {...headerScope}><img className={isDailyCase ? 'case-header-daily-image' : undefined} src={caseData.imageUrl} alt="" {...headerScope} /><div className="item-info" {...headerScope}><span className="item-name" {...headerScope}>{caseData.name}</span><span className="item-price" {...headerScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="coin" {...headerScope} /> {formatAmount(caseAmount(caseData, currency))}</span></div></div>

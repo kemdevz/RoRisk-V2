@@ -13,7 +13,7 @@ const modalScope = { 'data-v-8408fe7c': '' }
 const fairScope = { 'data-v-a4722fc8': '' }
 const BLUE_COIN = '/api/casino-images/coinflip/blue.9de76194.png'
 const ORANGE_COIN = '/api/casino-images/coinflip/orange.945d5bd3.png'
-const EMPTY_PLAYER = '/api/casino-images/coinflip/empty.png'
+const EMPTY_PLAYER = '/img/battles/no-player.png'
 const BOT_PLAYER = '/api/casino-images/coinflip/bot.png'
 const CROSS = '/api/casino-images/coinflip/cross.51b7936e.png'
 const currencyIcon = (currency) => currency === 'coins' ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'

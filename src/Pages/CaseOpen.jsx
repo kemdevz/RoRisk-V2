@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import SiteIcon from '../components/Icons'
 import FairSeedModal from '../components/FairSeedModal'
@@ -216,31 +216,31 @@ const patternPaths = [
   ['M49.56.42h5.76v5.76h-5.76zM55.68 49.38h5.76v5.76h-5.76zM55.68 37.14h5.76v5.76h-5.76zM55.68 24.9h5.76v5.76h-5.76zM55.68 12.66h5.76v5.76h-5.76z', '.02'],
 ]
 
-function Pattern({ scope, className = 'pattern-bg position-absolute', chroma = false }) {
+const Pattern = memo(function Pattern({ scope, className = 'pattern-bg position-absolute', chroma = false }) {
   const gradientId = `case-pattern-${useId().replace(/:/g, '')}`
   const fill = chroma ? `url(#${gradientId})` : 'currentColor'
   return <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62" aria-hidden="true" {...scope}>
     {chroma && <defs><linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="62" y2="0"><stop offset="0%" stopColor="#f06575" stopOpacity=".78" /><stop offset="14%" stopColor="#f0a855" stopOpacity=".74" /><stop offset="28%" stopColor="#e8d060" stopOpacity=".72" /><stop offset="42%" stopColor="#5ad090" stopOpacity=".74" /><stop offset="57%" stopColor="#6ca0ec" stopOpacity=".76" /><stop offset="71%" stopColor="#b090e8" stopOpacity=".74" /><stop offset="85%" stopColor="#ec90c0" stopOpacity=".72" /><stop offset="100%" stopColor="#f06575" stopOpacity=".78" /></linearGradient></defs>}
     {patternPaths.map(([path, opacity], index) => <path key={index} d={path} fill={fill} opacity={opacity} {...scope} />)}
   </svg>
-}
+})
 
 function Arrow({ direction }) {
   return <div className={`cases-spinner-arrow cases-spinner-arrow-${direction}`} {...spinnerScope}><svg fill="currentColor" viewBox="0 0 512 512" aria-hidden="true" {...spinnerScope}><path d="m98 190.06 139.78 163.12a24 24 0 0 0 36.44 0L414 190.06c13.34-15.57 2.28-39.62-18.22-39.62h-279.6c-20.5 0-31.56 24.05-18.18 39.62z" {...spinnerScope} /></svg></div>
 }
 
-function Reel({ items, style, winnerVisible, currency }) {
+const Reel = memo(function Reel({ items, style, winnerVisible, currency }) {
   return <div className="cases-reel" style={style} {...reelScope}>{items.map((item, index) => {
     const winner = index === 60 && winnerVisible
-    return <div className={`reel-element ${itemVisualClass(item)}${index === (winnerVisible ? 60 : 20) ? ' element-active' : ''}${winner ? ' element-winner' : ''}`} key={`${index}-${item?.index || item?.name}`} {...reelScope}>
+    return <div className={`reel-element ${itemVisualClass(item)}${index === (winnerVisible ? 60 : 20) ? ' element-active' : ''}${winner ? ' element-winner' : ''}`} key={index} {...reelScope}>
       <div className="element-vector-container" {...reelScope}><Pattern scope={reelScope} className="pattern-bg from-colored-text position-absolute" /></div>
       {item && <div className="element-image" {...reelScope}><img src={item.image} alt="" {...reelScope} /><div className="element-glow" {...reelScope} /></div>}
       {winner && <div className="element-info" {...reelScope}><span {...reelScope}>{displayItemName(item)}</span><div className="info-amount" {...reelScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt="icon" {...reelScope} /><div className="amount-value" {...reelScope}>{formatAmount(itemPrice(item, currency))}</div></div></div>}
     </div>
   })}</div>
-}
+})
 
-function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, variant = '' }) {
+const Spinner = memo(function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, variant = '' }) {
   return <div ref={spinnerRef} className={`cases-spinner spinner-${count}${variant ? ` spinner-${variant}` : ''}`} {...pageScope} {...spinnerScope}>
     {count === 1 ? <><div className="shadow-left" {...spinnerScope} /><div className="shadow-right" {...spinnerScope} /></> : <><div className="shadow-top" {...spinnerScope} /><div className="shadow-bottom" {...spinnerScope} /></>}
     {reels.map((reel, index) => <div className="inner-wheel" key={index} {...spinnerScope}>
@@ -250,7 +250,7 @@ function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, va
     </div>)}
     {count === 1 ? <><Arrow direction="top" /><Arrow direction="bottom" /></> : <><Arrow direction="left" /><Arrow direction="right" /></>}
   </div>
-}
+})
 
 function FastIcon() {
   return <svg className="toggle-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" {...controlsScope}><path d="M16.7971 8.71966L10.6931 8.74433C10.542 8.74493 10.444 8.57326 10.5127 8.42847L13.8866 1.31761C13.9881 1.1038 13.7397 0.897073 13.573 1.05657L3.06811 11.1056C2.9301 11.2376 3.01573 11.4833 3.20036 11.485L8.77294 11.5363C8.9182 11.5376 9.01459 11.6989 8.95548 11.8418L6.12076 18.6931C6.03288 18.9055 6.27472 19.0972 6.43754 18.9451L16.9304 9.10043C17.0712 8.96834 16.9839 8.71892 16.7971 8.71966Z" {...controlsScope} /></svg>
@@ -442,6 +442,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
     const multi = count > 1
     const geometry = reelGeometry(spinner, multi)
     const wheels = [...(spinner?.querySelectorAll('.inner-wheel') || [])]
+    const reelElements = wheels.map((wheel) => [...wheel.querySelectorAll('.reel-element')])
     if (!geometry || !wheels.length) return undefined
     const track = () => {
       const next = wheels.map((wheel) => {
@@ -454,9 +455,9 @@ function CaseOpen({ caseId, user, onSignIn }) {
       })
       if (next.some((position, index) => position !== previous[index])) {
         next.forEach((position, index) => {
-          const wheel = wheels[index]
-          wheel?.querySelector('.element-active')?.classList.remove('element-active')
-          wheel?.querySelectorAll('.reel-element')[position]?.classList.add('element-active')
+          if (position === previous[index]) return
+          reelElements[index]?.[previous[index]]?.classList.remove('element-active')
+          reelElements[index]?.[position]?.classList.add('element-active')
         })
         previous = next
         playSound('tick', { volume: 0.8 })
@@ -484,7 +485,7 @@ function CaseOpen({ caseId, user, onSignIn }) {
       `${openingId}${index}bait${outcome.outcome || 0}`,
     )))
 
-    await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
+    await new Promise((resolve) => window.setTimeout(resolve, 100))
 
     const updatedAt = opening.updatedAt || opening.updated_at || opening.completed_at || opening.created_at
     const normalDuration = updatedAt

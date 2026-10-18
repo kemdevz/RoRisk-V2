@@ -22956,6 +22956,7 @@ p[data-v-6353188e] {
   align-items: center;
   overflow: hidden;
   z-index: 10;
+  contain: layout paint style;
 }
 .cases-spinner .inner-wheel[data-v-306befb4]:last-child {
   border-right: none;

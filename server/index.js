@@ -8,6 +8,7 @@ import { handleBlackjackRequest } from './blackjack.js'
 import { handleCasesRequest } from './cases.js'
 import { handleCoinflipRequest } from './coinflip.js'
 import { handleDiceRequest } from './dice.js'
+import { handleKeepAliveRequest, startRenderKeepAlive } from './keep-render-awake.js'
 import { handleMinesRequest } from './mines.js'
 import { handlePaymentsRequest } from './payments.js'
 import { handleRouletteRequest } from './roulette.js'
@@ -1374,10 +1375,7 @@ async function handleRequest(request, response, env) {
   if (!url.pathname.startsWith('/api/')) return false
 
   try {
-    if (request.method === 'GET' && url.pathname === '/api/health') {
-      sendJson(response, 200, { ok: true })
-      return true
-    }
+    if (handleKeepAliveRequest({ request, response, url, sendJson })) return true
     if (url.pathname.startsWith('/api/battles')) {
       return await handleBattlesRequest({ request, response, url, env, readJson, sendJson, supabaseRequest, requestSessionUser, startRealtimeSession, broadcastRealtime })
     }
@@ -1414,31 +1412,6 @@ async function handleRequest(request, response, env) {
     })
   }
   return true
-}
-
-let renderKeepAliveTimer = null
-
-function startRenderKeepAlive() {
-  if (renderKeepAliveTimer || process.env.RENDER !== 'true' || process.env.RENDER_SERVICE_TYPE !== 'web') return
-  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/$/, '')
-  if (!/^https:\/\//i.test(baseUrl)) return
-
-  const ping = async () => {
-    try {
-      const response = await fetch(`${baseUrl}/api/health`, {
-        headers: { 'User-Agent': 'rorisk-render-keep-alive/1.0' },
-        signal: AbortSignal.timeout(90_000),
-      })
-      if (!response.ok) console.warn(`Render keep-alive returned HTTP ${response.status}.`)
-    } catch (error) {
-      console.warn(`Render keep-alive failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
-  const initialPing = setTimeout(() => { void ping() }, 60_000)
-  initialPing.unref?.()
-  renderKeepAliveTimer = setInterval(() => { void ping() }, 10 * 60_000)
-  renderKeepAliveTimer.unref?.()
 }
 
 export function roriskApi(env) {

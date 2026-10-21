@@ -51,6 +51,15 @@ let cryptoMarketCache = null
 let cryptoMarketRequest = null
 const preparedDepositCache = new Map()
 
+function preparedDepositKey(method, user) {
+  return `${user?.uuid || user?.id || ''}:${method[0]}:1000`
+}
+
+function readPreparedDeposit(method, user) {
+  const cached = preparedDepositCache.get(preparedDepositKey(method, user))
+  return cached?.expiresAt > Date.now() ? cached.value || null : null
+}
+
 async function loadCryptoMarket() {
   if (cryptoMarketCache && cryptoMarketCache.expiresAt > Date.now()) return cryptoMarketCache.data
   if (cryptoMarketRequest) return cryptoMarketRequest
@@ -80,7 +89,7 @@ async function prepareCryptoDeposit(method, user) {
   const detail = cryptoDetails[currency]
   const userId = user?.uuid || user?.id
   if (!userId) throw new Error('Please sign in to perform this action.')
-  const key = `${userId}:${currency}:1000`
+  const key = preparedDepositKey(method, user)
   const cached = preparedDepositCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.promise
 
@@ -99,23 +108,27 @@ async function prepareCryptoDeposit(method, user) {
     await preloadImage(payment.qrCode)
     const providerExpiry = Number(payment.expiresAt) * 1000
     const entry = preparedDepositCache.get(key)
-    if (entry) entry.expiresAt = Number.isFinite(providerExpiry) ? providerExpiry - 15_000 : Date.now() + 55 * 60_000
-    return { market, payment }
+    const result = { market, payment }
+    if (entry) {
+      entry.value = result
+      entry.expiresAt = Number.isFinite(providerExpiry) ? providerExpiry - 15_000 : Date.now() + 55 * 60_000
+    }
+    return result
   }).catch((error) => {
     preparedDepositCache.delete(key)
     throw error
   })
 
-  preparedDepositCache.set(key, { promise, expiresAt: Date.now() + 55 * 60_000 })
+  preparedDepositCache.set(key, { promise, value: null, expiresAt: Date.now() + 55 * 60_000 })
   return promise
 }
 
-function MethodCard({ method, label, image, onClick, disabled = false, loading = false, onPrefetch }) {
+function MethodCard({ method, label, image, onClick, onPointerDown, onPrefetch }) {
   return (
-    <button className={`cashier-element element-${method}`} type="button" disabled={disabled} onPointerEnter={onPrefetch} onFocus={onPrefetch} onClick={onClick} {...elementScope}>
+    <button className={`cashier-element element-${method}`} type="button" onPointerDown={onPointerDown} onPointerEnter={onPrefetch} onFocus={onPrefetch} onClick={onClick} {...elementScope}>
       <div className="element-inner" {...elementScope}>
         <div className="inner-image" {...elementScope}><img src={image} alt="" {...elementScope} /></div>
-        <div className="text-method" {...elementScope}>{loading ? 'Preparing...' : label}</div>
+        <div className="text-method" {...elementScope}>{label}</div>
       </div>
       <div className="element-glow" {...elementScope} />
     </button>
@@ -288,25 +301,27 @@ function useOutInState(initialValue, resolveElement, variant = 'step') {
   return [value, transitionTo]
 }
 
-function CryptoDeposit({ method, prepared }) {
+function CryptoDeposit({ method, user }) {
   const currency = method[0]
   const detail = cryptoDetails[currency]
+  const cachedDeposit = readPreparedDeposit(method, user)
   const [coins, setCoins] = useState('1,000')
-  const [usd, setUsd] = useState(() => Number(prepared.payment.usdAmount || 10).toFixed(2))
-  const [cryptoPrice, setCryptoPrice] = useState(() => Number(prepared.market.prices?.[currency.toUpperCase()]) || null)
+  const [usd, setUsd] = useState(() => Number(cachedDeposit?.payment.usdAmount || 10).toFixed(2))
+  const [cryptoPrice, setCryptoPrice] = useState(() => Number(cachedDeposit?.market.prices?.[currency.toUpperCase()] || cryptoMarketCache?.data.prices?.[currency.toUpperCase()]) || null)
   const [bonus, setBonus] = useState('')
-  const payment = prepared.payment
+  const [payment, setPayment] = useState(() => cachedDeposit?.payment || null)
   useEffect(() => {
-    const loadPrice = async () => {
-      try {
-        const payload = await loadCryptoMarket()
-        const price = Number(payload.prices?.[currency.toUpperCase()])
-        if (!Number.isFinite(price) || price <= 0) throw new Error('The current price is unavailable.')
-        setCryptoPrice(price)
-      } catch { setCryptoPrice(null) }
-    }
-    void loadPrice()
-  }, [currency])
+    let active = true
+    prepareCryptoDeposit(method, user).then(({ market, payment: nextPayment }) => {
+      if (!active) return
+      setPayment(nextPayment)
+      setUsd(Number(nextPayment.usdAmount || 10).toFixed(2))
+      setCryptoPrice(Number(market.prices?.[currency.toUpperCase()]) || null)
+    }).catch((error) => {
+      if (active) notify({ type: 'error', message: error.message || 'Unable to prepare this crypto deposit.' })
+    })
+    return () => { active = false }
+  }, [currency, method, user])
   const crypto = payment
     ? Number(payment.payAmount || 0).toFixed(8)
     : cryptoPrice
@@ -533,30 +548,12 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
   const [tab, setTab] = useState(initialTab)
   const [method, setMethod] = useOutInState(null, () => document.querySelector('.modal-content-host')?.firstElementChild, 'modal')
   const [conversion, setConversion] = useState('rocoins')
-  const [preparedDeposit, setPreparedDeposit] = useState(null)
-  const [preparingCurrency, setPreparingCurrency] = useState('')
   const methods = useMemo(() => cryptoMethods[tab] || [], [tab])
   const chooseTab = (next) => { setMethod(null); setTab(next) }
 
   useEffect(() => {
     void loadCryptoMarket().catch(() => {})
   }, [])
-
-  const openCryptoMethod = async (item) => {
-    if (tab !== 'deposit') { setMethod(item); return }
-    if (!user) { notify({ type: 'error', message: 'Please sign in to perform this action.' }); return }
-    if (preparingCurrency) return
-    setPreparingCurrency(item[0])
-    try {
-      const prepared = await prepareCryptoDeposit(item, user)
-      setPreparedDeposit({ currency: item[0], ...prepared })
-      setMethod(item)
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Unable to prepare this crypto deposit.' })
-    } finally {
-      setPreparingCurrency('')
-    }
-  }
 
   useEffect(() => {
     if (!method) return undefined
@@ -581,7 +578,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
 
   if (method === 'robux') return tab === 'deposit' ? <RobuxDeposit user={user} /> : <RobuxWithdraw user={user} onDone={onRequestClose} />
   if (method === 'limiteds') return <LimitedsDeposit user={user} />
-  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} prepared={preparedDeposit} /> : <CryptoWithdraw method={method} user={user} />
+  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} user={user} /> : <CryptoWithdraw method={method} user={user} />
 
   return (
     <div className="modal-cashier" {...cashierScope}>
@@ -592,7 +589,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
         <div className="cashier-stage" {...cashierScope}>
           {tab === 'deposit' || tab === 'withdraw' ? <div className="crypto-section" {...cashierScope}>
             <section className="cashier-block" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>In-Game · <img className="cashier-block-currency-icon" src="/assets/currency/rocoin.2d3febd5.svg" alt="RoCoins" {...cashierScope} /></h2><div className="in-game-banners" {...cashierScope}><button className="game-banner game-banner--robux" type="button" onClick={() => setMethod('robux')} {...cashierScope}><span className="game-banner-title" {...cashierScope}>Robux</span><img className="game-banner-art" src="/assets/payments/robux.2244c5eb.png" alt="" {...cashierScope} /></button><button className="game-banner game-banner--limiteds" type="button" onClick={() => tab === 'deposit' ? setMethod('limiteds') : openMarket()} {...cashierScope}><span className="game-banner-title" {...cashierScope}>Limiteds</span><img className="game-banner-art game-banner-art--valk" src="/assets/payments/valk.3e69ac3a.png" alt="" {...cashierScope} /></button></div></section>
-            <section className="cashier-block" {...cashierScope}><div className="cashier-block-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Crypto · <img className="cashier-block-currency-icon" src="/assets/currency/coin.svg" alt="Coins" {...cashierScope} /></h2></div><div className="crypto-grid" {...cashierScope}>{methods.map((item) => <MethodCard key={item[0]} method={item[0]} label={item[1]} image={item[2]} disabled={Boolean(preparingCurrency)} loading={preparingCurrency === item[0]} onPrefetch={() => { void loadCryptoMarket().catch(() => {}) }} onClick={() => { void openCryptoMethod(item) }} />)}</div></section>
+            <section className="cashier-block" {...cashierScope}><div className="cashier-block-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Crypto · <img className="cashier-block-currency-icon" src="/assets/currency/coin.svg" alt="Coins" {...cashierScope} /></h2></div><div className="crypto-grid" {...cashierScope}>{methods.map((item) => <MethodCard key={item[0]} method={item[0]} label={item[1]} image={item[2]} onPrefetch={() => { void loadCryptoMarket().catch(() => {}) }} onPointerDown={() => { if (tab === 'deposit' && user) void prepareCryptoDeposit(item, user).catch(() => {}) }} onClick={() => setMethod(item)} />)}</div></section>
             {tab === 'deposit' && <section className="cashier-block cashier-block--conversion" {...cashierScope}><div className="conversion-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Currency Conversion</h2><button className="conversion-switch" type="button" onClick={() => setConversion((value) => value === 'rocoins' ? 'coins' : 'rocoins')} {...cashierScope}>Switch to {conversion === 'rocoins' ? 'Coins' : 'RoCoins'}</button></div><div className="conversion-exchange" {...cashierScope}><div className="exchange-element" {...cashierScope}><div className="element-content" {...cashierScope}><img src={conversion === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/currency/coin.svg'} alt="" {...cashierScope} /><input value="1,000" readOnly aria-label={conversion === 'rocoins' ? 'RoCoins' : 'Coins'} {...cashierScope} /></div></div><span className="equals" {...cashierScope}>=</span><div className="exchange-element" {...cashierScope}><div className={`element-content${conversion === 'rocoins' ? ' element-robux' : ''}`} {...cashierScope}><img src={conversion === 'rocoins' ? '/assets/payments/rbx.62091f8a.png' : '/assets/currency/coin.svg'} alt="" {...cashierScope} /><input value={conversion === 'rocoins' ? '500' : '1.00'} readOnly aria-label={conversion === 'rocoins' ? 'Robux' : 'USD'} {...cashierScope} /></div></div></div></section>}
           </div> : tab === 'vault' ? <div className="vault-section" {...cashierScope}><Vault user={user} /></div> : <div className="redeem-section" {...cashierScope}><Redeem /></div>}
         </div>

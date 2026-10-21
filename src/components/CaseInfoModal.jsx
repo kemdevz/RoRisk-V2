@@ -76,7 +76,7 @@ export default function CaseInfoModal({ box, currency = "rocoins" }) {
             <div className="inner-background" {...modalScope}>
               <div className="background-content" {...modalScope}>
                 <img
-                  src={details.imageUrl || details.image || "/default-avatar.png"}
+                  src={details.imageUrl || details.image || "/assets/users/default-avatar.png"}
                   alt={details.name || "Case"}
                   decoding="async"
                   {...modalScope}
@@ -90,7 +90,7 @@ export default function CaseInfoModal({ box, currency = "rocoins" }) {
             </div>
             <div className="text-amount" {...modalScope}>
               <img
-                src={currency === "coins" ? "/coin.svg" : "/rocoin.2d3febd5.svg"}
+                src={currency === "coins" ? "/assets/currency/coin.svg" : "/assets/currency/rocoin.2d3febd5.svg"}
                 alt=""
                 {...modalScope}
               />

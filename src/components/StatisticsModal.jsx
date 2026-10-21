@@ -6,7 +6,7 @@ const integer = (value) => Math.floor(Number(value) || 0).toLocaleString('en-US'
 function CurrencyRow({ currency, value, profit = false }) {
   const number = Number(value) || 0
   const tone = profit ? (number > 0 ? ' profit-positive' : number < 0 ? ' profit-negative' : '') : ''
-  return <div className={`stat-value-row${tone}`} {...scope}><img className="Coins-icon" src={currency === 'rocoins' ? '/rocoin.2d3febd5.svg' : '/coin.svg'} alt="" {...scope} /><span {...scope}>{amount(number)}</span></div>
+  return <div className={`stat-value-row${tone}`} {...scope}><img className="Coins-icon" src={currency === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/currency/coin.svg'} alt="" {...scope} /><span {...scope}>{amount(number)}</span></div>
 }
 
 function CurrencyCard({ title, coins, rocoins, profit = false }) {

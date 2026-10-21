@@ -76,7 +76,7 @@ function Footer() {
       <div className="footer-content">
         <div className="footer-left">
           <a href="/">
-            <img src="/Footer/logo.ee8858f3.png" alt="RoRisk" />
+            <img src="/assets/branding/footer/logo.ee8858f3.png" alt="RoRisk" />
           </a>
           <div className="info-text">
             RoRisk.com is an independent virtual arcade, not affiliated with Roblox Corporation. We don’t own or claim Roblox’s trademarks or content - any mention of “Roblox” is purely descriptive. All games are fair and focused on fun and our platform is intended for users 18+.

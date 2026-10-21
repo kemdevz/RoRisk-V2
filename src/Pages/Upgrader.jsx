@@ -33,7 +33,7 @@ const amountRanges = [
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value))
 const numberValue = (value) => Number(String(value).replace(/,/g, '')) || 0
 const formatAmount = (value) => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('en-US')
-const currencyIcon = (currency) => currency === 'rocoins' ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
+const currencyIcon = (currency) => currency === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/rewards/legacy/coin.12f4bce8.svg'
 const itemValue = (item, currency = item?.currency || 'rocoins') => {
   const currencyValue = currency === 'coins' ? item?.coinValue : item?.rocoinValue
   if (currencyValue != null) return Math.max(0, Number(currencyValue) || 0)
@@ -83,7 +83,7 @@ function EmptyItemIcon() {
 }
 
 function UpgraderHeader({ onFairness }) {
-  return <div className="upgrader-header" {...headerScope}><div className="upgrader-header-left" {...headerScope}><SiteIcon name="upgrader" {...headerScope} /> Upgrader</div><div className="upgrader-header-center" {...headerScope}><img src="/Footer/logo.ee8858f3.png" alt="logo" {...headerScope} /></div><div className="upgrader-header-right" role="button" tabIndex="0" onClick={onFairness} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFairness() }} {...headerScope}><SiteIcon name="fairness" {...headerScope} /> Fairness</div></div>
+  return <div className="upgrader-header" {...headerScope}><div className="upgrader-header-left" {...headerScope}><SiteIcon name="upgrader" {...headerScope} /> Upgrader</div><div className="upgrader-header-center" {...headerScope}><img src="/assets/branding/footer/logo.ee8858f3.png" alt="logo" {...headerScope} /></div><div className="upgrader-header-right" role="button" tabIndex="0" onClick={onFairness} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFairness() }} {...headerScope}><SiteIcon name="fairness" {...headerScope} /> Fairness</div></div>
 }
 
 function UpgraderControls({ amount, setAmount, selected, balance, currency, busy, onPlay, onFairness }) {

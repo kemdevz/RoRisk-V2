@@ -2,11 +2,11 @@ import { createHash, randomBytes } from 'node:crypto'
 
 const BATTLE_SELECT = '*'
 const BOT_PROFILES = [
-  ['Risk Bot', '/img/battles/risk-bot.png'],
-  ['Kanye', '/img/battles/kanye.png'],
-  ['Adin', '/img/battles/adin.png'],
-  ['Tate', '/img/battles/tate.png'],
-  ['PvP Bot', '/img/battles/pvp-bot.png'],
+  ['Risk Bot', '/assets/images/battles/risk-bot.png'],
+  ['Kanye', '/assets/images/battles/kanye.png'],
+  ['Adin', '/assets/images/battles/adin.png'],
+  ['Tate', '/assets/images/battles/tate.png'],
+  ['PvP Bot', '/assets/images/battles/pvp-bot.png'],
 ]
 const BATTLE_FINALIZATIONS = new Map()
 
@@ -330,7 +330,7 @@ function resolveBattle(row, eos) {
         cumulative += caseChance(items[index])
         if (roll <= cumulative) { selectedIndex = index; break }
       }
-      const item = items[selectedIndex] || { name: 'Unknown Item', image: '/default-avatar.png', chance: '100%' }
+      const item = items[selectedIndex] || { name: 'Unknown Item', image: '/assets/users/default-avatar.png', chance: '100%' }
       const itemAmount = currencyIconValue(item, row.currency)
       totals.set(player.slot, (totals.get(player.slot) || 0) + itemAmount)
       lastAmounts.set(player.slot, itemAmount)

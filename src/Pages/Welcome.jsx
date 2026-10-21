@@ -9,7 +9,7 @@ const controlsScope = { 'data-v-7f08c9d6': '' }
 const riskSpinItem = {
   index: 'risk-spin',
   name: 'Risk Spin',
-  image: '/img/battles/risk-spin.png',
+  image: '/assets/images/battles/risk-spin.png',
   chance: '0.001%',
   tickets: 1,
   color: 'yellow',
@@ -283,7 +283,7 @@ function Welcome({ user, onSignIn, onOpenWallet }) {
   }
 
   const inviteName = affiliate.referrerUser?.username || affiliate.redeemedCode || 'RoRisk'
-  const inviteAvatar = affiliate.referrerUser?.avatar || '/default-avatar.png'
+  const inviteAvatar = affiliate.referrerUser?.avatar || '/assets/users/default-avatar.png'
 
   return <div className="welcome-cases" {...pageScope}>
     <div className="welcome-hero" {...heroScope}>
@@ -295,20 +295,20 @@ function Welcome({ user, onSignIn, onOpenWallet }) {
     <div className="welcome-cases-game" {...pageScope}>
       {reels.length > 0 && <Spinner count={1} reels={reels} styles={styles} winnerVisible={winnerVisible} spinnerRef={spinnerRef} currency={currency} variant="welcome" />}
       <div className={`welcome-controls${disabled ? ' welcome-controls-disabled' : ''}`} {...controlsScope}>
-        <div className="welcome-controls-art" {...controlsScope}><div className="welcome-controls-chest-blur" aria-hidden="true" {...controlsScope}><div className="welcome-controls-chest-blur-inner" {...controlsScope}><img src="/Welcome/welcome-chicken.4c912e1c.png" alt="" {...controlsScope} /></div></div><img className="welcome-controls-chest" src="/Welcome/welcome-chicken.4c912e1c.png" alt="" {...controlsScope} /></div>
+        <div className="welcome-controls-art" {...controlsScope}><div className="welcome-controls-chest-blur" aria-hidden="true" {...controlsScope}><div className="welcome-controls-chest-blur-inner" {...controlsScope}><img src="/assets/welcome/welcome-chicken.4c912e1c.png" alt="" {...controlsScope} /></div></div><img className="welcome-controls-chest" src="/assets/welcome/welcome-chicken.4c912e1c.png" alt="" {...controlsScope} /></div>
         <div className="welcome-controls-copy" {...controlsScope}>
           <h2 className="welcome-controls-title" {...controlsScope}>Welcome Case</h2>
-          <div className="welcome-controls-code" {...controlsScope}><span className="welcome-controls-code-label" {...controlsScope}>Using code</span><div className="welcome-controls-code-chip" {...controlsScope}><input ref={codeInput} className="welcome-controls-code-value" type="text" placeholder="code" maxLength="12" size={Math.max(affiliateCode.length, 4)} disabled={inputLocked} autoComplete="off" spellCheck="false" value={affiliateCode} onChange={(event) => setAffiliateCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); redeem() } }} {...controlsScope} /><button className="welcome-controls-code-edit" type="button" disabled={disabled} aria-label="Edit referral code" onClick={redeem} {...controlsScope}><img src="/Welcome/edit.e4f1634b.svg" alt="" width="22" height="22" {...controlsScope} /></button></div></div>
+          <div className="welcome-controls-code" {...controlsScope}><span className="welcome-controls-code-label" {...controlsScope}>Using code</span><div className="welcome-controls-code-chip" {...controlsScope}><input ref={codeInput} className="welcome-controls-code-value" type="text" placeholder="code" maxLength="12" size={Math.max(affiliateCode.length, 4)} disabled={inputLocked} autoComplete="off" spellCheck="false" value={affiliateCode} onChange={(event) => setAffiliateCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); redeem() } }} {...controlsScope} /><button className="welcome-controls-code-edit" type="button" disabled={disabled} aria-label="Edit referral code" onClick={redeem} {...controlsScope}><img src="/assets/welcome/edit.e4f1634b.svg" alt="" width="22" height="22" {...controlsScope} /></button></div></div>
           {inputLocked && <p className="welcome-controls-hint" {...controlsScope}>You can switch this code in {daysRemaining} day{daysRemaining === 1 ? '' : 's'}.</p>}
           <div className="welcome-controls-actions" {...controlsScope}>
             <div className="welcome-controls-buttons" {...controlsScope}><button className={`welcome-controls-open${allClaimed ? ' welcome-controls-open-opened' : ''}`} type="button" disabled={disabled || allClaimed} onClick={() => open(false)} {...controlsScope}><span {...controlsScope}>{allClaimed ? 'Opened' : 'Open Case'}</span><span className="welcome-controls-count" {...controlsScope}>{claimedCount}/4</span></button><button className="welcome-controls-demo" type="button" disabled={disabled} onClick={() => open(true)} {...controlsScope}>Demo Spin</button></div>
             <button className={`welcome-controls-toggle${fast ? ' is-on' : ''}`} type="button" disabled={disabled} onClick={() => setFast((value) => !value)} {...controlsScope}><FastIcon /><span {...controlsScope}>Fast Spin</span><span className={`welcome-switch welcome-switch-fast${fast ? ' is-on' : ''}`} {...controlsScope} /></button>
-            <button className={`welcome-controls-toggle${riskSpin ? ' is-on' : ''}`} type="button" disabled={disabled} onClick={() => setRiskSpin((value) => !value)} {...controlsScope}><img className="welcome-controls-toggle-icon" src="/Welcome/risk-spin.2fb55d91.png" alt="" {...controlsScope} /><span {...controlsScope}>Risk Spin</span><span className={`welcome-switch welcome-switch-risk${riskSpin ? ' is-on' : ''}`} {...controlsScope} /></button>
+            <button className={`welcome-controls-toggle${riskSpin ? ' is-on' : ''}`} type="button" disabled={disabled} onClick={() => setRiskSpin((value) => !value)} {...controlsScope}><img className="welcome-controls-toggle-icon" src="/assets/welcome/risk-spin.2fb55d91.png" alt="" {...controlsScope} /><span {...controlsScope}>Risk Spin</span><span className={`welcome-switch welcome-switch-risk${riskSpin ? ' is-on' : ''}`} {...controlsScope} /></button>
           </div>
         </div>
       </div>
       <div className="welcome-cases-rule" aria-hidden="true" {...pageScope} />
-      <div className="welcome-cases-drops" {...pageScope}><div className="welcome-cases-drops-header" {...pageScope}><img src="/Welcome/drops.4ce60956.svg" alt="" {...pageScope} /><span {...pageScope}>Possible Drops</span></div>{items.length > 0 && <div className="welcome-cases-drops-grid" {...pageScope}>{items.map((item) => <ItemCard item={item} items={items} currency={currency} key={item.index || item.name} />)}</div>}</div>
+      <div className="welcome-cases-drops" {...pageScope}><div className="welcome-cases-drops-header" {...pageScope}><img src="/assets/welcome/drops.4ce60956.svg" alt="" {...pageScope} /><span {...pageScope}>Possible Drops</span></div>{items.length > 0 && <div className="welcome-cases-drops-grid" {...pageScope}>{items.map((item) => <ItemCard item={item} items={items} currency={currency} key={item.index || item.name} />)}</div>}</div>
     </div>
   </div>
 }

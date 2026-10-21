@@ -155,9 +155,9 @@ async function getRobloxHeadshot(robloxId) {
   url.searchParams.set('format', 'Png')
   url.searchParams.set('isCircular', 'false')
   const response = await fetch(url)
-  if (!response.ok) return '/default-avatar.png'
+  if (!response.ok) return '/assets/users/default-avatar.png'
   const result = await response.json()
-  return result.data?.[0]?.imageUrl || '/default-avatar.png'
+  return result.data?.[0]?.imageUrl || '/assets/users/default-avatar.png'
 }
 
 async function supabaseRequest(env, path, options = {}) {
@@ -1189,7 +1189,7 @@ async function completeAuthProfile(env, accessToken) {
   return upsertProfile(env, {
     uuid: authUser.id,
     username,
-    avatar_headshot: '/default-avatar.png',
+    avatar_headshot: '/assets/users/default-avatar.png',
     email,
   }, 'uuid')
 }
@@ -1249,7 +1249,7 @@ const WELCOME_CASE_ROW = Object.freeze({
   type: 'site',
   categories: ['rewards'],
   level_min: null,
-  image_url: '/Welcome/welcome-chicken.4c912e1c.png',
+  image_url: '/assets/welcome/welcome-chicken.4c912e1c.png',
   sort_order: 0,
   active: true,
   risk_level: 99.3216,

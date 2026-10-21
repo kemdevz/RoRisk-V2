@@ -41,7 +41,7 @@ function publicUser(user) {
   if (!user) return null
   const id = user.uuid || user.id || null
   const robloxId = user.roblox_id || user.robloxId || null
-  const avatar = user.avatar_headshot || user.avatar || '/default-avatar.png'
+  const avatar = user.avatar_headshot || user.avatar || '/assets/users/default-avatar.png'
   const joinedAt = user.joined_at || user.joinedAt || null
   return {
     uuid: id,

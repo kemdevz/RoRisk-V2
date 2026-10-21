@@ -4,30 +4,30 @@ import Bets from '../components/Bets'
 import { casinoImageUrl, loadCasinoCatalog } from '../lib/CasinoCatalog'
 
 const banners = [
-  { src: '/Banners/rewards.52a9b29c.png', alt: 'Claim your free rewards', width: 1080, height: 420 },
-  { src: '/Banners/release.ec6f2af6.png', alt: 'RoRisk is now live', width: 1080, height: 420 },
-  { src: '/Banners/pragmatic.6bd4d323.png', alt: 'Try Pragmatic Play titles', width: 1860, height: 724 },
+  { src: '/assets/banners/rewards.52a9b29c.png', alt: 'Claim your free rewards', width: 1080, height: 420 },
+  { src: '/assets/banners/release.ec6f2af6.png', alt: 'RoRisk is now live', width: 1080, height: 420 },
+  { src: '/assets/banners/pragmatic.6bd4d323.png', alt: 'Try Pragmatic Play titles', width: 1860, height: 724 },
 ]
 
 const originals = [
-  ['X-Roulette', '/Games/xr.webm', 'slide', 'wide', '/x-roulette', true],
-  ['Blackjack', '/Games/blackjack.webm', 'blackjack', '', '/blackjack'],
-  ['Upgrader', '/Games/upgrader.webm', 'upgrader', '', '/upgrader'],
-  ['Mines', '/Games/mines.webm', 'mines', '', '/mines'],
-  ['Dice', '/Games/dice.webm', 'dice', '', '/dice', true],
-  ['Case Battles', '/Games/casebattles.webm', 'battles', '', '/battles'],
-  ['Cases', '/Games/cases.webm', 'cases', '', '/cases'],
+  ['X-Roulette', '/assets/games/previews/xr.webm', 'slide', 'wide', '/x-roulette', true],
+  ['Blackjack', '/assets/games/previews/blackjack.webm', 'blackjack', '', '/blackjack'],
+  ['Upgrader', '/assets/games/previews/upgrader.webm', 'upgrader', '', '/upgrader'],
+  ['Mines', '/assets/games/previews/mines.webm', 'mines', '', '/mines'],
+  ['Dice', '/assets/games/previews/dice.webm', 'dice', '', '/dice', true],
+  ['Case Battles', '/assets/games/previews/casebattles.webm', 'battles', '', '/battles'],
+  ['Cases', '/assets/games/previews/cases.webm', 'cases', '', '/cases'],
 ]
 
 const methods = [
-  ['btc', '/Methods/btc.79d4fc52.png'],
-  ['eth', '/Methods/eth.png'],
-  ['ltc', '/Methods/ltc.png'],
-  ['sol', '/Methods/solana.png'],
-  ['usdt', '/Methods/tether.png'],
-  ['usdc', '/Methods/usdc.png'],
-  ['robux', '/Methods/robux.2244c5eb.png'],
-  ['limiteds', '/Methods/valk.3e69ac3a.png'],
+  ['btc', '/assets/payments/btc.79d4fc52.png'],
+  ['eth', '/assets/payments/eth.png'],
+  ['ltc', '/assets/payments/ltc.png'],
+  ['sol', '/assets/payments/solana.png'],
+  ['usdt', '/assets/payments/tether.png'],
+  ['usdc', '/assets/payments/usdc.png'],
+  ['robux', '/assets/payments/robux.2244c5eb.png'],
+  ['limiteds', '/assets/payments/valk.3e69ac3a.png'],
 ]
 
 function levelTheme(level) {
@@ -203,7 +203,7 @@ function HomeBanner() {
 
 function HomeWelcome({ user, onRewards }) {
   const username = user?.username || 'Guest'
-  const avatar = user?.avatar_headshot || user?.avatar || '/default-avatar.png'
+  const avatar = user?.avatar_headshot || user?.avatar || '/assets/users/default-avatar.png'
   const xp = Number(user?.xp)
   const storedLevel = Math.min(100, Math.max(0, Number(user?.level) || 0))
   const level = Number.isFinite(xp) && xp > 0 ? Math.min(100, Math.floor(Math.cbrt(xp / 1000 / 50))) : storedLevel
@@ -236,8 +236,8 @@ function HomeWelcome({ user, onRewards }) {
           <button className="rewards-btn" type="button" onClick={onRewards} data-v-21735a18="">View Daily Rewards</button>
         </div>
         <div className="welcome-visual" aria-hidden="true" data-v-21735a18="">
-          <img className="welcome-item" src="/federation.png" alt="" data-v-21735a18="" />
-          <video className="welcome-character" src="/Home.webm" autoPlay muted loop playsInline preload="auto" data-v-21735a18="" />
+          <img className="welcome-item" src="/assets/images/federation.png" alt="" data-v-21735a18="" />
+          <video className="welcome-character" src="/assets/backgrounds/home.webm" autoPlay muted loop playsInline preload="auto" data-v-21735a18="" />
         </div>
       </div>
     </div>

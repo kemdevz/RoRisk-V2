@@ -1,11 +1,11 @@
 const XP_RANKS = [
-  { name: 'Rust', min: 1, accent: '#dd7c5c', icon: '/Ranks/rust.0b56e484.svg' },
-  { name: 'Bronze', min: 20, accent: '#d08a4c', icon: '/Ranks/bronze.f59206cb.svg' },
-  { name: 'Silver', min: 40, accent: '#c0c7d1', icon: '/Ranks/silver.81ba8fbc.svg' },
-  { name: 'Gold', min: 60, accent: '#ffc74d', icon: '/Ranks/gold.49b1d38b.svg' },
-  { name: 'Diamond', min: 80, accent: '#7dd3fc', icon: '/Ranks/diamond.e915302c.svg' },
-  { name: 'Emerald', min: 100, accent: '#34d399', icon: '/Ranks/emerald.2fc26a46.svg' },
-  { name: 'Ruby', min: 120, accent: '#e11d48', icon: '/Ranks/ruby.550e6038.svg' },
+  { name: 'Rust', min: 1, accent: '#dd7c5c', icon: '/assets/ranks/rust.0b56e484.svg' },
+  { name: 'Bronze', min: 20, accent: '#d08a4c', icon: '/assets/ranks/bronze.f59206cb.svg' },
+  { name: 'Silver', min: 40, accent: '#c0c7d1', icon: '/assets/ranks/silver.81ba8fbc.svg' },
+  { name: 'Gold', min: 60, accent: '#ffc74d', icon: '/assets/ranks/gold.49b1d38b.svg' },
+  { name: 'Diamond', min: 80, accent: '#7dd3fc', icon: '/assets/ranks/diamond.e915302c.svg' },
+  { name: 'Emerald', min: 100, accent: '#34d399', icon: '/assets/ranks/emerald.2fc26a46.svg' },
+  { name: 'Ruby', min: 120, accent: '#e11d48', icon: '/assets/ranks/ruby.550e6038.svg' },
 ]
 
 const STAFF_ACCENTS = {

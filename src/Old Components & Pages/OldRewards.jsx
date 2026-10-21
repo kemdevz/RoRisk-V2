@@ -48,7 +48,7 @@ function RewardsHero({ onSignIn }) {
     <div className="rewards-hero" {...heroScope}>
       <div className="rewards-hero-top" {...heroScope}>
         <p className="rewards-hero-kicker" {...heroScope}>Welcome to</p>
-        <img className="rewards-hero-title-img" src="/Rewards/rewards-title.99905d45.png" alt="Rewards" {...heroScope} />
+        <img className="rewards-hero-title-img" src="/assets/rewards/legacy/rewards-title.99905d45.png" alt="Rewards" {...heroScope} />
         <h2 className="rewards-hero-sub" {...heroScope}>Welcome Bonus</h2>
         <p className="rewards-hero-desc" {...heroScope}>Enjoy our Welcome Bonus — claim free welcome cases and start winning!</p>
       </div>
@@ -104,7 +104,7 @@ function RewardsRakeback({ onProtectedAction }) {
           <SiteIcon name={item.icon} {...rakebackScope} />
           <div className="rewards-rakeback-content-title" {...rakebackScope}>{item.title}</div>
           <div className={`rewards-rakeback-content-available ${item.type}`} {...rakebackScope}>
-            Available: <img src="/Rewards/coin.12f4bce8.svg" alt="currency" {...rakebackScope} /> <span {...rakebackScope}>0</span>
+            Available: <img src="/assets/rewards/legacy/coin.12f4bce8.svg" alt="currency" {...rakebackScope} /> <span {...rakebackScope}>0</span>
           </div>
           <button className={`rewards-rakeback-content-button ${item.type}`} type="button" disabled={!item.enabled} onClick={item.enabled ? onProtectedAction : undefined} {...rakebackScope}>Claim Now</button>
         </div>
@@ -126,7 +126,7 @@ function RewardsDailyCases() {
             <div className="daily-case-image-wrap" {...dailyScope}><img src={image} alt={`Level ${level} case`} {...dailyScope} /></div>
             <div className="daily-case-level" {...dailyScope}>Level {level}</div>
             <div className="daily-case-action daily-case-action--locked" {...dailyScope}>
-              <img className="locked-icon" src="/Rewards/locked.8cc650fb.svg" alt="" {...dailyScope} /><span {...dailyScope}>Case locked</span>
+              <img className="locked-icon" src="/assets/rewards/legacy/locked.8cc650fb.svg" alt="" {...dailyScope} /><span {...dailyScope}>Case locked</span>
             </div>
           </div>
         ))}
@@ -153,12 +153,12 @@ function OldRewards({ onSignIn }) {
         <div className="rewards-content-group" {...pageScope}>
           <div className="rewards-discord" onClick={() => window.open('https://discord.gg/rorisk', '_blank', 'noopener,noreferrer')} role="button" tabIndex="0" {...discordScope}>
             <div className="rewards-discord-sparks-overlay" {...discordScope} />
-            <img src="/Rewards/discord-vector.71cac381.png" alt="Discord Icon" {...discordScope} />
+            <img src="/assets/rewards/legacy/discord-vector.71cac381.png" alt="Discord Icon" {...discordScope} />
             <div className="rewards-discord-header" {...discordScope}><span {...discordScope}>Discord Rewards</span><span className="rewards-discord-description" {...discordScope}>Join our Discord server to get the latest news and updates!</span></div>
           </div>
           <div className="rewards-faucet" onClick={protectedAction} role="button" tabIndex="0" {...faucetScope}>
             <div className="rewards-faucet-sparks-overlay" {...faucetScope} />
-            <img src="/Rewards/faucet-vector.5c444398.png" alt="Faucet Icon" {...faucetScope} />
+            <img src="/assets/rewards/legacy/faucet-vector.5c444398.png" alt="Faucet Icon" {...faucetScope} />
             <div className="rewards-faucet-header" {...faucetScope}><span {...faucetScope}>Free Faucet</span><span className="rewards-faucet-description" {...faucetScope}>Are you a high level? Claim free coins every hour!</span></div>
           </div>
         </div>

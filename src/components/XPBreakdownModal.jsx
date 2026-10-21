@@ -2,7 +2,7 @@ import { useState } from 'react'
 import ModalAnimation from './ModalAnimation'
 
 const scope = { 'data-v-9f785c6e': '' }
-const asset = (name) => `/RewardsNew/${name}`
+const asset = (name) => `/assets/rewards/current/${name}`
 
 const xpThresholds = [
   0, .1, 100, 250, 500, 800, 1200, 1900, 3000, 4500, 6200, 8300,

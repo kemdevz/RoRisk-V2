@@ -16,7 +16,7 @@ function formatDate(value) {
 }
 
 const formatAmount = (value) => Math.floor(Math.abs(Number(value) || 0) / 1000).toLocaleString('en-US')
-const iconFor = (currency) => String(currency).toLowerCase() === 'rocoins' ? '/rocoin.2d3febd5.svg' : '/coin.svg'
+const iconFor = (currency) => String(currency).toLowerCase() === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/currency/coin.svg'
 
 function Pagination({ page, pages, onChange, className = 'transactions-pagination' }) {
   return <div className={className} {...scope}><button className="pagination-button" type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Previous page" {...scope}><svg viewBox="0 0 20 20" fill="none" {...scope}><path d="M12.5 15 7.5 10l5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button><div className="pagination-info" {...scope}>Page: <span {...scope}>{page} / {pages}</span></div><button className="pagination-button" type="button" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label="Next page" {...scope}><svg viewBox="0 0 20 20" fill="none" {...scope}><path d="m7.5 5 5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button></div>

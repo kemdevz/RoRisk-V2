@@ -48,7 +48,7 @@ function LoadingScreen({ leaving = false }) {
       <div className="container" {...scope}>
         <img
           className={`logo static-logo${logoPhase !== 'idle' ? ` ${logoPhase}` : ''}`}
-          src="/Footer/logo.ee8858f3.png"
+          src="/assets/branding/footer/logo.ee8858f3.png"
           alt="Logo"
           {...scope}
         />

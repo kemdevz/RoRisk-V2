@@ -122,7 +122,7 @@ function AmountNumber({ amount, className = '', isPlus = false, duration = 1000,
 
 function RankBadge({ rank, className = '' }) {
   if (!['admin', 'mod', 'partner'].includes(rank)) return null
-  return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${rank}${className ? ` ${className}` : ''}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/assets/ranks/${rank}.${rank === 'admin' ? 'f6df244d' : rank === 'mod' ? '998a884b' : '0a259ddf'}.svg`} alt={rank} data-v-fc8af502="" /></div></div>
 }
 
 function NavbarCashier({ user, onOpenWallet }) {
@@ -139,8 +139,8 @@ function NavbarCashier({ user, onOpenWallet }) {
   const currencyRef = useRef(currency)
   const isRoCoins = currency === 'rocoins'
   const balance = Number(isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)) || 0
-  const currencyIcon = isRoCoins ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
-  const alternateIcon = isRoCoins ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
+  const currencyIcon = isRoCoins ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/rewards/legacy/coin.12f4bce8.svg'
+  const alternateIcon = isRoCoins ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
   const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
   const alternateLabel = isRoCoins ? 'Coins' : 'RoCoins'
 
@@ -347,7 +347,7 @@ function NavbarUser({ user, onSignOut, onOpenWallet, onOpenSettings, onOpenStati
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(150, 'language-menu')
   const menuRef = useRef(null)
   const { level, progress } = userLevelData(user)
-  const avatar = user?.avatar_headshot || user?.avatar || '/default-avatar.png'
+  const avatar = user?.avatar_headshot || user?.avatar || '/assets/users/default-avatar.png'
   const rank = normalizeStaffRank(user?.rank)
   const hasStaffRank = ['admin', 'mod', 'partner'].includes(rank)
   const xpRank = xpRankForLevel(level)
@@ -418,7 +418,7 @@ function NavbarLogo() {
       <div data-v-1cdc1483="" className="navbar-left-logo" bis_skin_checked="1">
         <video
           data-v-1cdc1483=""
-          src="/Logos/rorisk.mp4"
+          src="/assets/branding/logos/rorisk.mp4"
           autoPlay
           muted
           loop
@@ -437,7 +437,7 @@ function NavbarLogo() {
       className="navbar-left-logo-mobile"
       bis_skin_checked="1"
     >
-      <img data-v-1cdc1483="" src="/Logos/rorisk.png" alt="logo" />
+      <img data-v-1cdc1483="" src="/assets/branding/logos/rorisk.png" alt="logo" />
     </div>
   )
 }

@@ -7,7 +7,7 @@ const profileScope = { 'data-v-b395c708': '' }
 const dailyScope = { 'data-v-6df6623e': '' }
 const cardScope = { 'data-v-26f0adc3': '' }
 const bonusScope = { 'data-v-396c843f': '' }
-const asset = (name) => `/RewardsNew/${name}`
+const asset = (name) => `/assets/rewards/current/${name}`
 
 const xpThresholds = [
   0, .1, 100, 250, 500, 800, 1200, 1900, 3000, 4500, 6200, 8300,
@@ -121,7 +121,7 @@ function RewardsProfile({ user }) {
           <div className="rewards-profile-user" {...profileScope}>
             <div className="rewards-profile-avatar" style={{ '--rank-accent': staffAccent || rank.accent }} {...profileScope}>
               <div className="rewards-profile-avatar-inner" {...profileScope}>
-                <img src={user?.avatar_headshot || user?.avatar || '/default-avatar.png'} alt="" {...profileScope} />
+                <img src={user?.avatar_headshot || user?.avatar || '/assets/users/default-avatar.png'} alt="" {...profileScope} />
               </div>
             </div>
             <div className="rewards-profile-meta" {...profileScope}>

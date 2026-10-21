@@ -150,10 +150,10 @@ function Sidebar({ pathname, user, onOpenWallet, onOpenSettings }) {
         <SidebarSection title="Games" items={games} showLabels={showLabels} pathname={pathname} />
         {showLabels && (
           <a className="sidebar-race-banner" href="/race" data-v-9e395626="">
-            <img className="sidebar-race-art" src="/race2.57df575d.png" alt="RoRisk weekly race" data-v-9e395626="" />
+            <img className="sidebar-race-art" src="/assets/race/race2.57df575d.png" alt="RoRisk weekly race" data-v-9e395626="" />
             <div className="sidebar-race-copy" data-v-9e395626="">
-              <div className="sidebar-race-row" data-v-9e395626=""><img className="sidebar-race-icon" src="/Sidebar/sidebar-race-coin.bc4b0944.svg" alt="" width="14" height="14" data-v-9e395626="" /><span className="sidebar-race-title" data-v-9e395626="">500k race</span></div>
-              <div className="sidebar-race-row" data-v-9e395626=""><img className="sidebar-race-icon" src="/Sidebar/sidebar-race-timer.79af31ab.svg" alt="" width="14" height="14" data-v-9e395626="" /><div className="race-timer is-inline" data-v-233720ce="" data-v-9e395626=""><div className="timer-inline" data-v-233720ce="">{'154:04:22'.split('').map((value, index) => value === ':' ? <span className="inline-colon" key={index} data-v-233720ce="">:</span> : <span className="inline-digit" key={index} data-v-233720ce=""><span className="flip-number" data-v-233720ce="">{value}</span></span>)}</div></div></div>
+              <div className="sidebar-race-row" data-v-9e395626=""><img className="sidebar-race-icon" src="/assets/navigation/sidebar/sidebar-race-coin.bc4b0944.svg" alt="" width="14" height="14" data-v-9e395626="" /><span className="sidebar-race-title" data-v-9e395626="">500k race</span></div>
+              <div className="sidebar-race-row" data-v-9e395626=""><img className="sidebar-race-icon" src="/assets/navigation/sidebar/sidebar-race-timer.79af31ab.svg" alt="" width="14" height="14" data-v-9e395626="" /><div className="race-timer is-inline" data-v-233720ce="" data-v-9e395626=""><div className="timer-inline" data-v-233720ce="">{'154:04:22'.split('').map((value, index) => value === ':' ? <span className="inline-colon" key={index} data-v-233720ce="">:</span> : <span className="inline-digit" key={index} data-v-233720ce=""><span className="flip-number" data-v-233720ce="">{value}</span></span>)}</div></div></div>
             </div>
           </a>
         )}

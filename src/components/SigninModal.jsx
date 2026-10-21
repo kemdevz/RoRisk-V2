@@ -568,7 +568,7 @@ function SigninModal({ initialTab, onClose, onAuthenticated }) {
       {loginVisible && (
         <ModalAnimation onClose={handleLoginClosed} label={tab === 'register' ? 'Register' : 'Sign in'} closeRequest={closeLogin}>
           <div className="modal-login-container" {...loginScope} {...modalScope}>
-            <div className="login-banner" {...loginScope}><img src="/Auth/login.1f4318ce.png" alt="Login Banner" {...loginScope} /></div>
+            <div className="login-banner" {...loginScope}><img src="/assets/auth/login.1f4318ce.png" alt="Login Banner" {...loginScope} /></div>
             <div className="modal-login" {...loginScope}>
               <div className="login-form-area" {...loginScope}>
                 <div className="login-content" {...loginScope}><LoginContentTransition tab={tab} credentialsTab={credentialsTab} setTab={selectTab} onAuthenticated={onAuthenticated} /></div>

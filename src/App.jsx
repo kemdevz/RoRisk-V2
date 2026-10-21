@@ -432,7 +432,7 @@ function App() {
         <Sidebar pathname={pathname} user={user} onOpenWallet={openWallet} onOpenSettings={openSettings} />
         <main
           className={`background${isChatOpen ? ' chat-open' : ''}`}
-          style={{ backgroundImage: pathname === '/rewards' ? "url('/img/rewards.82057e5f.png')" : "url('/img/main.c55d6769.png')" }}
+          style={{ backgroundImage: pathname === '/rewards' ? "url('/assets/images/rewards.82057e5f.png')" : "url('/assets/images/main.c55d6769.png')" }}
         >
           <div className="content-wrapper">
             <div className={routeClass}>

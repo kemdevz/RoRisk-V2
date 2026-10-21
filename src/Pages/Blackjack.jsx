@@ -36,7 +36,7 @@ const cards = {
 
 const amountNumber = (value) => Number(String(value).replace(/,/g, '')) || 0
 const formatAmount = (value) => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('en-US')
-const currencyIcon = (currency) => currency === 'rocoins' ? '/rocoin.2d3febd5.svg' : '/Rewards/coin.12f4bce8.svg'
+const currencyIcon = (currency) => currency === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/rewards/legacy/coin.12f4bce8.svg'
 
 function cardValue(hand) {
   let value = 0
@@ -53,7 +53,7 @@ function cardValue(hand) {
 function cardImage(card) {
   if (!card || card.rank === 'hidden') return ''
   const filename = cards[`${String(card.rank).toLowerCase()}_${card.suit}`]
-  return filename ? `/Blackjack/${filename}` : ''
+  return filename ? `/assets/games/blackjack/${filename}` : ''
 }
 
 function ActionIcon({ type }) {
@@ -68,7 +68,7 @@ function ButtonLoading() {
 }
 
 function BlackjackHeader({ onFairness }) {
-  return <div className="blackjack-header" {...headerScope}><div className="blackjack-header-left" {...headerScope}><SiteIcon name="blackjack" {...headerScope} /> Blackjack</div><div className="blackjack-header-center" {...headerScope}><img src="/Footer/logo.ee8858f3.png" alt="logo" {...headerScope} /></div><div className="blackjack-header-right" role="button" tabIndex="0" onClick={onFairness} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFairness() }} {...headerScope}><SiteIcon name="fairness" {...headerScope} /> Fairness</div></div>
+  return <div className="blackjack-header" {...headerScope}><div className="blackjack-header-left" {...headerScope}><SiteIcon name="blackjack" {...headerScope} /> Blackjack</div><div className="blackjack-header-center" {...headerScope}><img src="/assets/branding/footer/logo.ee8858f3.png" alt="logo" {...headerScope} /></div><div className="blackjack-header-right" role="button" tabIndex="0" onClick={onFairness} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFairness() }} {...headerScope}><SiteIcon name="fairness" {...headerScope} /> Fairness</div></div>
 }
 
 function BlackjackValue({ value, state = '', className = '' }) {
@@ -136,7 +136,7 @@ function BlackjackCard({ card, dealer, dealOrder, outcome }) {
     return () => { window.clearTimeout(timer); travel.cancel(); flip.cancel() }
   }, [card.rank, dealer, dealOrder, hidden])
   const resultStyle = outcome === 'won' || outcome === 'push' ? { boxShadow: '0 0 0 3px #22c55e, 0 0 0 5px rgba(34,197,94,.3)', filter: 'drop-shadow(0 0 40px rgba(34,197,94,.2))', transition: 'box-shadow .3s ease .7s, filter .3s ease .7s' } : outcome === 'lose' ? { boxShadow: '0 0 0 3px #ef4444, 0 0 0 5px rgba(239,68,68,.3)', filter: 'drop-shadow(0 0 40px rgba(239,68,68,.2))', transition: 'box-shadow .3s ease .7s, filter .3s ease .7s' } : undefined
-  return <div ref={rootRef} className={`blackjack-card${hidden ? ' card-hidden skip-motion' : ''} card-${card.suit}${dealer ? ' card-dealer' : ' card-player'}${animationComplete ? ' card-animated' : ''}${outcome ? ` card-${outcome === 'won' ? 'winner' : outcome === 'lose' ? 'loser' : 'push'}` : ''}`} data-animated={animationComplete} style={resultStyle} {...cardScope}><div ref={innerRef} className={`card-inner${animationComplete ? ' card-animated' : ''}`} {...cardScope}>{!hidden && <div className="inner-front" {...cardScope}><img src={cardImage(card)} alt="blackjack-logo" draggable="false" decoding="sync" {...cardScope} /></div>}<div className="inner-back" {...cardScope}><img src="/Blackjack/back.0a3ac3b7.png" alt="blackjack-logo" draggable="false" {...cardScope} /></div></div></div>
+  return <div ref={rootRef} className={`blackjack-card${hidden ? ' card-hidden skip-motion' : ''} card-${card.suit}${dealer ? ' card-dealer' : ' card-player'}${animationComplete ? ' card-animated' : ''}${outcome ? ` card-${outcome === 'won' ? 'winner' : outcome === 'lose' ? 'loser' : 'push'}` : ''}`} data-animated={animationComplete} style={resultStyle} {...cardScope}><div ref={innerRef} className={`card-inner${animationComplete ? ' card-animated' : ''}`} {...cardScope}>{!hidden && <div className="inner-front" {...cardScope}><img src={cardImage(card)} alt="blackjack-logo" draggable="false" decoding="sync" {...cardScope} /></div>}<div className="inner-back" {...cardScope}><img src="/assets/games/blackjack/back.0a3ac3b7.png" alt="blackjack-logo" draggable="false" {...cardScope} /></div></div></div>
 }
 
 function AnimatedCardRow({ className, children, layoutKey }) {
@@ -204,7 +204,7 @@ function Hand({ cards: handCards, hand, dealer = false, game, split = false }) {
 
 function BlackjackGame({ game }) {
   const split = Boolean(game?.cards_left?.length && game?.cards_right?.length)
-  return <div className={`blackjack-game${game?.state === 'completed' ? ' game-completed' : ''}`} {...gameScope}><div className="game-deck" {...gameScope}><img src="/Blackjack/cards-deck.705f6419.png" alt="deck" {...gameScope} /></div><div className="game-background" {...gameScope}><img src="/main.c55d6769.png" alt="bg" {...gameScope} /></div><div className="game-information" {...gameScope}><img src="/Blackjack/game-info.b8474b72.svg" alt="" {...gameScope} /></div><div className="game-table" {...gameScope}>{game?.dealer_cards?.length > 0 && <Hand cards={game.dealer_cards} hand="dealer" dealer game={game} />}{game?.player_cards?.length > 0 && <div className={`player-hand${split ? ' has-split-hands' : ''}`} {...gameScope}>{split ? <><Hand cards={game.cards_left} hand="left" game={game} split /><Hand cards={game.cards_right} hand="right" game={game} split /></> : <Hand cards={game.player_cards} hand="main" game={game} />}</div>}</div></div>
+  return <div className={`blackjack-game${game?.state === 'completed' ? ' game-completed' : ''}`} {...gameScope}><div className="game-deck" {...gameScope}><img src="/assets/games/blackjack/cards-deck.705f6419.png" alt="deck" {...gameScope} /></div><div className="game-background" {...gameScope}><img src="/assets/backgrounds/main.c55d6769.png" alt="bg" {...gameScope} /></div><div className="game-information" {...gameScope}><img src="/assets/games/blackjack/game-info.b8474b72.svg" alt="" {...gameScope} /></div><div className="game-table" {...gameScope}>{game?.dealer_cards?.length > 0 && <Hand cards={game.dealer_cards} hand="dealer" dealer game={game} />}{game?.player_cards?.length > 0 && <div className={`player-hand${split ? ' has-split-hands' : ''}`} {...gameScope}>{split ? <><Hand cards={game.cards_left} hand="left" game={game} split /><Hand cards={game.cards_right} hand="right" game={game} split /></> : <Hand cards={game.player_cards} hand="main" game={game} />}</div>}</div></div>
 }
 
 function BlackjackControls({ amount, setAmount, game, currency, balance, busy, onStart, onAction, onFairness }) {
@@ -232,7 +232,7 @@ function Blackjack({ user }) {
   useEffect(() => {
     document.title = 'Blackjack - RoRisk.com'
     preloadSound('dealCard')
-    const sources = ['/Blackjack/back.0a3ac3b7.png', '/Blackjack/cards-deck.705f6419.png', '/Blackjack/game-info.b8474b72.svg', ...Object.values(cards).map((name) => `/Blackjack/${name}`)]
+    const sources = ['/assets/games/blackjack/back.0a3ac3b7.png', '/assets/games/blackjack/cards-deck.705f6419.png', '/assets/games/blackjack/game-info.b8474b72.svg', ...Object.values(cards).map((name) => `/assets/games/blackjack/${name}`)]
     const images = sources.map((source) => { const image = new Image(); image.decoding = 'async'; image.src = source; return image })
     return () => images.forEach((image) => { image.src = '' })
   }, [])

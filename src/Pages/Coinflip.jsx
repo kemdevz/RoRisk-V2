@@ -13,10 +13,10 @@ const modalScope = { 'data-v-8408fe7c': '' }
 const fairScope = { 'data-v-a4722fc8': '' }
 const BLUE_COIN = '/api/casino-images/coinflip/blue.9de76194.png'
 const ORANGE_COIN = '/api/casino-images/coinflip/orange.945d5bd3.png'
-const EMPTY_PLAYER = '/img/battles/no-player.png'
+const EMPTY_PLAYER = '/assets/images/battles/no-player.png'
 const BOT_PLAYER = '/api/casino-images/coinflip/bot.png'
 const CROSS = '/api/casino-images/coinflip/cross.51b7936e.png'
-const currencyIcon = (currency) => currency === 'coins' ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
+const currencyIcon = (currency) => currency === 'coins' ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
 const coinIcon = (coin) => coin === 'orange' ? ORANGE_COIN : BLUE_COIN
 const formatAmount = (value) => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('en-US')
 const userId = (user) => user?.uuid || user?.id || user?._id
@@ -41,7 +41,7 @@ function LevelBadge({ level }) {
 function RankBadge({ rank }) {
   const normalized = String(rank || 'user').toLowerCase()
   const hash = normalized === 'admin' ? 'f6df244d' : normalized === 'mod' ? '998a884b' : '0a259ddf'
-  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/assets/ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
 }
 
 function ChevronDown() {

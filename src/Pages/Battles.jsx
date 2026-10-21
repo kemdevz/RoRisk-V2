@@ -44,13 +44,13 @@ const placeholderScope = { "data-v-f88cce48": "" };
 const fairnessScope = { "data-v-a4722fc8": "" };
 
 const battleXpRanks = [
-  [120, "Ruby", "/Ranks/ruby.550e6038.svg"],
-  [100, "Emerald", "/Ranks/emerald.2fc26a46.svg"],
-  [80, "Diamond", "/Ranks/diamond.e915302c.svg"],
-  [60, "Gold", "/Ranks/gold.49b1d38b.svg"],
-  [40, "Silver", "/Ranks/silver.81ba8fbc.svg"],
-  [20, "Bronze", "/Ranks/bronze.f59206cb.svg"],
-  [0, "Rust", "/Ranks/rust.0b56e484.svg"],
+  [120, "Ruby", "/assets/ranks/ruby.550e6038.svg"],
+  [100, "Emerald", "/assets/ranks/emerald.2fc26a46.svg"],
+  [80, "Diamond", "/assets/ranks/diamond.e915302c.svg"],
+  [60, "Gold", "/assets/ranks/gold.49b1d38b.svg"],
+  [40, "Silver", "/assets/ranks/silver.81ba8fbc.svg"],
+  [20, "Bronze", "/assets/ranks/bronze.f59206cb.svg"],
+  [0, "Rust", "/assets/ranks/rust.0b56e484.svg"],
 ];
 
 const PLAYER_OPTIONS = [
@@ -105,7 +105,7 @@ function formatAmount(value) {
 }
 
 function currencyIcon(currency) {
-  return currency === "coins" ? "/coin.svg" : "/rocoin.2d3febd5.svg";
+  return currency === "coins" ? "/assets/currency/coin.svg" : "/assets/currency/rocoin.2d3febd5.svg";
 }
 
 function mergeBattleUpdate(current, incoming) {
@@ -484,7 +484,7 @@ const BattleRow = memo(function BattleRow({ game, onJoin, rowRef }) {
                 >
                   <img
                     className="avatar-image"
-                    src={!bet ? "/img/battles/no-player.png" : bet.bot ? "/img/battles/risk-bot.png" : bet.user?.avatar || "/default-avatar.png"}
+                    src={!bet ? "/assets/images/battles/no-player.png" : bet.bot ? "/assets/images/battles/risk-bot.png" : bet.user?.avatar || "/assets/users/default-avatar.png"}
                     alt={!bet ? "No Player" : bet.bot ? "Bot" : bet.user?.username || "Player"}
                     loading="lazy"
                     decoding="async"
@@ -1660,7 +1660,7 @@ function CreateBattle({ boxes, currency, user, onUserUpdate }) {
                         {key === "riskSpin" ? (
                           <img
                             className={`risk-spin-logo${active ? " active" : ""}`}
-                            src="/img/battles/risk-spin.png"
+                            src="/assets/images/battles/risk-spin.png"
                             alt=""
                             {...modesScope}
                           />
@@ -1960,7 +1960,7 @@ function BattleUserRank({ user }) {
       >
         <div className="rank-inner" data-v-fc8af502="" {...betScope}>
           <img
-            src={`/Ranks/${rank}.${hash}.svg`}
+            src={`/assets/ranks/${rank}.${hash}.svg`}
             alt={rank}
             data-v-fc8af502=""
             {...betScope}
@@ -2027,7 +2027,7 @@ function loadRiskSpinSprite() {
       resolve(image);
     };
     image.onerror = reject;
-    image.src = "/img/battles/risk-spin-sprite.png";
+    image.src = "/assets/images/battles/risk-spin-sprite.png";
   });
   return riskSpinSpritePromise;
 }
@@ -2101,7 +2101,7 @@ const BattleReelElement = memo(function BattleReelElement({
           <RiskSpinCanvas />
         ) : (
           <img
-            src={item?.image || item?.imageUrl || "/default-avatar.png"}
+            src={item?.image || item?.imageUrl || "/assets/users/default-avatar.png"}
             alt=""
             decoding="async"
             {...reelScope}
@@ -2153,7 +2153,7 @@ const BattleReel = memo(function BattleReel({
     );
     return {
       name: "Risk Spin",
-      image: "/img/battles/risk-spin.png",
+      image: "/assets/images/battles/risk-spin.png",
       chance: `${chance}%`,
       rarity: "yellow",
       riskSpin: true,
@@ -2767,8 +2767,8 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
           src={
             segment.bet?.user?.avatar ||
             (segment.bet?.bot
-              ? "/img/battles/risk-bot.png"
-              : "/default-avatar.png")
+              ? "/assets/images/battles/risk-bot.png"
+              : "/assets/users/default-avatar.png")
           }
           alt={segment.name}
           {...jackpotScope}
@@ -2859,10 +2859,10 @@ const PlayerResult = memo(function PlayerResult({ bet, game }) {
                 className="avatar-image"
                 src={
                   !bet
-                    ? "/img/battles/no-player.png"
+                    ? "/assets/images/battles/no-player.png"
                     : bet.bot
-                      ? bet?.user?.avatar || "/img/battles/risk-bot.png"
-                      : bet?.user?.avatar || "/default-avatar.png"
+                      ? bet?.user?.avatar || "/assets/images/battles/risk-bot.png"
+                      : bet?.user?.avatar || "/assets/users/default-avatar.png"
                 }
                 alt=""
                 {...betScope}
@@ -3013,7 +3013,7 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
     const urls = new Set();
     if (sourceGame?.options?.riskSpin) {
       loadRiskSpinSprite().catch(() => undefined);
-      urls.add("/img/battles/risk-spin.png");
+      urls.add("/assets/images/battles/risk-spin.png");
     }
     for (const round of sourceGame?.rounds || []) {
       const caseImage = round?.box?.imageUrl || round?.box?.image;
@@ -3543,9 +3543,9 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                 src={
                   game.state === "completed"
                     ? creatorLost
-                      ? "/img/battles/battles-lost.png"
-                      : "/img/battles/battles-won.png"
-                    : "/img/battles/battles.png"
+                      ? "/assets/images/battles/battles-lost.png"
+                      : "/assets/images/battles/battles-won.png"
+                    : "/assets/images/battles/battles.png"
                 }
                 alt="Battles Background"
                 {...spinnerScope}
@@ -3606,10 +3606,10 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                     <img
                       src={
                         !bet
-                          ? "/img/battles/no-player.png"
+                          ? "/assets/images/battles/no-player.png"
                           : bet.bot
-                            ? bet?.user?.avatar || "/img/battles/risk-bot.png"
-                            : bet?.user?.avatar || "/default-avatar.png"
+                            ? bet?.user?.avatar || "/assets/images/battles/risk-bot.png"
+                            : bet?.user?.avatar || "/assets/users/default-avatar.png"
                       }
                       alt={
                         !bet
@@ -3757,8 +3757,8 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                           className="avatar-image"
                           src={
                             winner.bot
-                              ? winner.user?.avatar || "/img/battles/risk-bot.png"
-                              : winner.user?.avatar || "/default-avatar.png"
+                              ? winner.user?.avatar || "/assets/images/battles/risk-bot.png"
+                              : winner.user?.avatar || "/assets/users/default-avatar.png"
                           }
                           alt=""
                           {...spinnerScope}

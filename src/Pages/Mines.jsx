@@ -14,7 +14,7 @@ const gameScope = { 'data-v-68c58efe': '' }
 const tileScope = { 'data-v-607606b4': '' }
 const loadingScope = { 'data-v-21317e4a': '' }
 const image = (name) => `/api/casino-images/mines/${name}`
-const currencyImage = (currency) => currency === 'coins' ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
+const currencyImage = (currency) => currency === 'coins' ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
 const formatAmount = (value) => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('en-US')
 
 function multiplierFor(reveals, mines) {

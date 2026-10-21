@@ -52,7 +52,7 @@ const CaseCard = memo(function CaseCard({ box, currency, priority = false }) {
     {isNew && <div className="box-new" {...boxScope}>New</div>}
     <div className="box-content" {...boxScope}>
       <div className="box-image" {...boxScope}><img className="box-image-top" src={image} width="130" height="130" loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : 'auto'} decoding="async" alt="" {...boxScope} /></div>
-      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src={currency === 'coins' ? '/coin.svg' : '/rocoin.2d3febd5.svg'} alt={currency === 'coins' ? 'Coins' : 'RoCoins'} {...boxScope} /><span {...boxScope}>{Math.floor(Number(amount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div><CaseRiskBar bar={box.rarityBar} /></div></div>
+      <div className="box-name-container" {...boxScope}><div className="box-info" {...boxScope}><div className="box-name" {...boxScope}>{box.name}</div><div className="box-price" {...boxScope}><div className="price-content" {...boxScope}><img src={currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg'} alt={currency === 'coins' ? 'Coins' : 'RoCoins'} {...boxScope} /><span {...boxScope}>{Math.floor(Number(amount) || 0).toLocaleString('en-US')}</span></div><div className="open-case-content" {...boxScope}><span {...boxScope}>View Case</span></div></div><CaseRiskBar bar={box.rarityBar} /></div></div>
     </div>
   </a>
 })

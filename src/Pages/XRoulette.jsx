@@ -13,7 +13,7 @@ const controlsScope = { 'data-v-97054fc0': '' }
 const betsScope = { 'data-v-0474fe40': '' }
 const fairScope = { 'data-v-a4722fc8': '' }
 const loadingScope = { 'data-v-21317e4a': '' }
-const currencyIcon = (currency) => currency === 'coins' ? '/Rewards/coin.12f4bce8.svg' : '/rocoin.2d3febd5.svg'
+const currencyIcon = (currency) => currency === 'coins' ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
 const userId = (user) => String(user?.user_uuid || user?.uuid || user?.id || user?._id || '')
 const formatBetAmount = (value) => (Math.floor(Math.max(0, Number(value) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const formatSpinnerAmount = (value) => Math.floor(Math.max(0, Number(value) || 0)).toLocaleString('en-US')
@@ -46,7 +46,7 @@ function RouletteCard({ card, winner, highlight, bets, currency }) {
   const payout = myBets.reduce((total, bet) => Number(card.multiplierBps) >= Number(bet.target_multiplier_bps) ? total + Math.floor(Number(bet.amount) * Number(bet.target_multiplier_bps) / 100) : total, 0)
   return <div className={`xr-card element-${tierFor(card.multiplierBps)}${winner && highlight ? ' is-winner' : ''}${losing ? ' is-skull' : ''}`} {...cardScope}>
     <div className="xr-card-multiplier" {...cardScope}>{(Number(card.multiplierBps) / 100).toFixed(2)}x</div>
-    <div className="xr-card-image" {...cardScope}><img className={losing ? 'skull-image' : undefined} src={losing ? '/img/skull.5e8dd863.png' : card.image} alt={losing ? 'Losing tile' : card.name} {...cardScope} /></div>
+    <div className="xr-card-image" {...cardScope}><img className={losing ? 'skull-image' : undefined} src={losing ? '/assets/images/skull.5e8dd863.png' : card.image} alt={losing ? 'Losing tile' : card.name} {...cardScope} /></div>
     {!losing && <div className="xr-card-name" {...cardScope}>{card.name}</div>}
     {!losing && myBets.length > 0 && <div className="xr-card-value" {...cardScope}><img src={currencyIcon(currency)} alt="" {...cardScope} /><span {...cardScope}>{formatSpinnerAmount(payout)}</span></div>}
   </div>
@@ -198,7 +198,7 @@ function LevelBadge({ level }) {
 function RankBadge({ rank }) {
   const normalized = String(rank || '').toLowerCase()
   const hash = normalized === 'admin' ? 'f6df244d' : normalized === 'mod' ? '998a884b' : '0a259ddf'
-  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/Ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
+  return <div className={`box-rank rank-${normalized}`} data-v-fc8af502=""><div className="rank-inner" data-v-fc8af502=""><img src={`/assets/ranks/${normalized}.${hash}.svg`} alt={normalized} data-v-fc8af502="" /></div></div>
 }
 
 function AnimatedAmount({ value }) {
@@ -229,7 +229,7 @@ function ActiveBetCard({ bet }) {
     return () => cancelAnimationFrame(frame)
   }, [])
   const rank = bet.rank && bet.rank !== 'user' ? bet.rank : null
-  return <div className={`bet-card card-pop-enter-active${entered ? '' : ' card-pop-enter'}`} {...betsScope}><div className="element-user" {...betsScope}><div className="user-avatar" {...betsScope}><img className="avatar-image" src={bet.roblox_avatar_headshot || '/default-avatar.png'} alt="" {...betsScope} /></div><div className="user-details" {...betsScope}><div className="user-name" {...betsScope}>{rank ? <RankBadge rank={rank} /> : Number(bet.level) > 0 ? <LevelBadge level={bet.level} /> : null}<span {...betsScope}>{bet.username || 'Player'}</span></div><strong {...betsScope}>{(Number(bet.target_multiplier_bps) / 100).toFixed(2)}x</strong></div></div><div className="element-info" {...betsScope}><img src={currencyIcon(bet.currency)} alt="" {...betsScope} /><span {...betsScope}><AnimatedAmount value={bet.amount} /></span></div></div>
+  return <div className={`bet-card card-pop-enter-active${entered ? '' : ' card-pop-enter'}`} {...betsScope}><div className="element-user" {...betsScope}><div className="user-avatar" {...betsScope}><img className="avatar-image" src={bet.roblox_avatar_headshot || '/assets/users/default-avatar.png'} alt="" {...betsScope} /></div><div className="user-details" {...betsScope}><div className="user-name" {...betsScope}>{rank ? <RankBadge rank={rank} /> : Number(bet.level) > 0 ? <LevelBadge level={bet.level} /> : null}<span {...betsScope}>{bet.username || 'Player'}</span></div><strong {...betsScope}>{(Number(bet.target_multiplier_bps) / 100).toFixed(2)}x</strong></div></div><div className="element-info" {...betsScope}><img src={currencyIcon(bet.currency)} alt="" {...betsScope} /><span {...betsScope}><AnimatedAmount value={bet.amount} /></span></div></div>
 }
 
 function ActiveBets({ bets }) {

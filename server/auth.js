@@ -1,9 +1,30 @@
 export async function handleAuthRequest({ request, response, url, env, api }) {
-  const { sendJson, readJson, isSecureRequest, startRealtimeSession, createChallenge, verifyChallenge, verifyCaptcha, findRobloxUser, getRobloxProfile, normalizeVerificationText, publicProfileContainsVerificationCode, getRobloxHeadshot, supabaseAuthRequest, upsertProfile, completeAuthProfile, clearRealtimeSessionCookie } = api
+  const { sendJson, readJson, isSecureRequest, startRealtimeSession, createChallenge, verifyChallenge, verifyCaptcha, findRobloxUser, getRobloxProfile, normalizeVerificationText, publicProfileContainsVerificationCode, getRobloxHeadshot, supabaseAuthRequest, supabaseRequest, upsertProfile, completeAuthProfile, clearRealtimeSessionCookie, requestSessionUser } = api
     if (request.method === 'GET' && url.pathname === '/api/auth/config') {
       sendJson(response, 200, {
         hcaptchaSiteKey: env.HCAPTCHA_SITE_KEY || '',
       })
+      return true
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/auth/session') {
+      const sessionUser = requestSessionUser(request, env)
+      if (!sessionUser?.uuid) {
+        sendJson(response, 401, { error: 'Your session has expired. Please sign in again.' })
+        return true
+      }
+      const query = new URLSearchParams({ uuid: `eq.${sessionUser.uuid}`, select: '*', limit: '1' })
+      const rows = await supabaseRequest(env, `/rest/v1/rorisk_users?${query}`)
+      const user = rows?.[0]
+      if (!user) {
+        clearRealtimeSessionCookie(response, isSecureRequest(request))
+        sendJson(response, 401, { error: 'Your account could not be found.' })
+        return true
+      }
+      if (Number(user.coins) !== Number(sessionUser.coins) || Number(user.rocoins) !== Number(sessionUser.rocoins)) {
+        startRealtimeSession(request, response, env, user)
+      }
+      sendJson(response, 200, { user })
       return true
     }
 

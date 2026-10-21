@@ -64,6 +64,17 @@ export async function syncGoogleProfile() {
   return result.user
 }
 
+export async function refreshSessionProfile({ signal } = {}) {
+  const response = await fetch('/api/auth/session', {
+    method: 'GET',
+    cache: 'no-store',
+    signal,
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(result.error || 'Unable to refresh your account.')
+  return result.user || null
+}
+
 export async function signOut() {
   recoveryAccessToken = null
   await authRequest('/api/auth/sign-out', {})

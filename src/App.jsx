@@ -11,7 +11,7 @@ import SettingsModal from './components/SettingsModal'
 import WalletModal from './components/WalletModal'
 import StatisticsModal from './components/StatisticsModal'
 import TransactionsModal from './components/TransactionsModal'
-import { listenForPasswordRecovery, signOut, syncGoogleProfile } from './lib/Supabase'
+import { listenForPasswordRecovery, refreshSessionProfile, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 import { preloadSound } from './lib/Sounds'
 
@@ -126,6 +126,53 @@ function App() {
   useEffect(() => {
     preloadSound('slideStarted')
   }, [])
+
+  const authenticatedUserId = user?.uuid || user?.id || null
+  useEffect(() => {
+    if (loaderPhase !== 'done' || !authenticatedUserId) return undefined
+    let disposed = false
+    let inFlight = false
+    let timer
+    let controller
+
+    const schedule = () => {
+      if (timer) window.clearTimeout(timer)
+      if (!disposed && !document.hidden) timer = window.setTimeout(refresh, 1000)
+    }
+    const refresh = async () => {
+      if (disposed || inFlight || document.hidden) return
+      inFlight = true
+      controller = new AbortController()
+      try {
+        const profile = await refreshSessionProfile({ signal: controller.signal })
+        if (!disposed && (profile?.uuid || profile?.id) === authenticatedUserId) {
+          window.dispatchEvent(new CustomEvent('rorisk:user-update', { detail: { user: profile } }))
+        }
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          // Keep the current session usable during a temporary network interruption.
+        }
+      } finally {
+        inFlight = false
+        schedule()
+      }
+    }
+    const refreshWhenVisible = () => {
+      if (document.hidden) return
+      void refresh()
+    }
+
+    void refresh()
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      disposed = true
+      if (timer) window.clearTimeout(timer)
+      controller?.abort()
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [authenticatedUserId, loaderPhase])
 
   useEffect(() => {
     if (loaderPhase !== 'done') return undefined

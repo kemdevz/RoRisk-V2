@@ -56,8 +56,8 @@ function SidebarUserCard({ user }) {
 
 const games = [
   ['battles', 'Battles', '/battles'],
-  ['blackjack', 'Blackjack', '/blackjack'],
-  ['upgrader', 'Upgrader', '/upgrader'],
+  ['blackjack', 'Blackjack', '/blackjack', true],
+  ['upgrader', 'Upgrader', '/upgrader', true],
   ['slide', 'X-Roulette', '/x-roulette'],
   ['mines', 'Mines', '/mines'],
   ['coinflip', 'Coinflip', '/coinflip'],
@@ -92,8 +92,13 @@ function SidebarSection({ title, items, showLabels, pathname, onAction }) {
       )}
       {(open || !showLabels) && (
         <div className="sidebar-items" data-v-4fc2a52c="">
-          {items.map(([icon, label, href]) => (
-            onAction?.[href] ? (
+          {items.map(([icon, label, href, disabled]) => (
+            disabled ? (
+              <button className="sidebar-item sidebar-item-disabled" type="button" disabled aria-disabled="true" title={`${label} is temporarily unavailable`} key={label} data-v-4fc2a52c="">
+                <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
+                {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}
+              </button>
+            ) : onAction?.[href] ? (
               <button className={`sidebar-item${pathname === href ? ' sidebar-item-selected' : ''}`} type="button" key={label} onClick={onAction[href]} data-v-4fc2a52c="">
                 <span className="sidebar-item-icon" data-v-4fc2a52c=""><SiteIcon name={icon} data-v-4fc2a52c="" /></span>
                 {showLabels && <span className="sidebar-item-text" data-v-4fc2a52c="">{label}</span>}

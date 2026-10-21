@@ -2711,6 +2711,17 @@ aside#sidebar .sidebar-item[data-v-4fc2a52c]:hover {
   background: transparent;
   filter: none;
 }
+aside#sidebar .sidebar-item.sidebar-item-disabled[data-v-4fc2a52c] {
+  opacity: .38;
+  cursor: not-allowed;
+}
+aside#sidebar .sidebar-item.sidebar-item-disabled[data-v-4fc2a52c]:hover {
+  color: #a8acb7;
+}
+aside#sidebar .sidebar-item.sidebar-item-disabled:hover .sidebar-item-icon svg[data-v-4fc2a52c] {
+  fill: #a8acb7;
+  color: #a8acb7;
+}
 aside#sidebar .sidebar-item.router-link-active.race[data-v-4fc2a52c],aside#sidebar .sidebar-item.router-link-active.rewards[data-v-4fc2a52c],aside#sidebar .sidebar-item.router-link-active[data-v-4fc2a52c] {
   color: #fff;
   background: transparent;

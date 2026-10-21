@@ -217,6 +217,13 @@ function App() {
     const storeUser = (profile) => {
       setUser((current) => {
         if (!current || (current.uuid || current.id) !== (profile.uuid || profile.id)) return current
+        const changed = Object.entries(profile).some(([field, value]) => {
+          const currentValue = current[field]
+          if (Object.is(currentValue, value)) return false
+          if (!currentValue || !value || typeof currentValue !== 'object' || typeof value !== 'object') return true
+          return JSON.stringify(currentValue) !== JSON.stringify(value)
+        })
+        if (!changed) return current
         const next = { ...current, ...profile }
         window.localStorage.setItem('rorisk_user', JSON.stringify(next))
         return next

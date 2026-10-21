@@ -18,9 +18,10 @@ function Affiliates({ user, onSignIn }) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const host = window.location.host
+  const userId = user?.uuid || user?.id
 
   const load = useCallback(async (page = 1) => {
-    if (!user) { setLoading(false); return }
+    if (!userId) { setLoading(false); return }
     try {
       setLoading(true)
       const response = await fetch(`/api/affiliates?page=${page}&limit=50`)
@@ -30,7 +31,7 @@ function Affiliates({ user, onSignIn }) {
       setCode((current) => current || payload.data?.code || '')
     } catch (error) { notify({ type: 'error', message: error.message }) }
     finally { setLoading(false) }
-  }, [user])
+  }, [userId])
 
   useEffect(() => { document.title = 'Affiliates - RoRisk.com'; Promise.resolve().then(() => load(1)) }, [load])
 

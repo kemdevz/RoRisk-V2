@@ -43,6 +43,9 @@ export async function handlePaymentsRequest({ request, response, url, env, api }
             description: `RoRisk Coins deposit ${orderId}`,
           }),
         })
+        if (!payment?.track_id || !payment?.address || !Number.isFinite(Number(payment.pay_amount))) {
+          throw new Error('OxaPay did not return a valid deposit address.')
+        }
       } catch (error) {
         await supabaseRequest(env, `/rest/v1/rorisk_crypto_deposits?uuid=eq.${orderId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', updated_at: new Date().toISOString() }) }).catch(() => {})
         throw error

@@ -229,11 +229,36 @@ function CryptoDeposit({ method, user }) {
   const currency = method[0]
   const detail = cryptoDetails[currency]
   const [coins, setCoins] = useState('1,000')
-  const [crypto, setCrypto] = useState('0.00000000')
   const [usd, setUsd] = useState('1.00')
+  const [cryptoPrice, setCryptoPrice] = useState(null)
   const [bonus, setBonus] = useState('')
   const [payment, setPayment] = useState(null)
   const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    const loadPrice = async () => {
+      try {
+        const response = await fetch('/api/payments/oxapay/currencies', { cache: 'no-store', signal: controller.signal })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || 'Unable to retrieve the current price.')
+        const price = Number(payload.prices?.[currency.toUpperCase()])
+        if (!Number.isFinite(price) || price <= 0) throw new Error('The current price is unavailable.')
+        setCryptoPrice(price)
+      } catch (error) {
+        if (error.name !== 'AbortError') setCryptoPrice(null)
+      }
+    }
+    void loadPrice()
+    return () => controller.abort()
+  }, [currency])
+  const crypto = payment
+    ? Number(payment.payAmount || 0).toFixed(8)
+    : cryptoPrice
+      ? ((Number(usd) || 0) / cryptoPrice).toFixed(8)
+      : '0.00000000'
+  const displayedPrice = cryptoPrice
+    ? `$${cryptoPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: cryptoPrice < 1 ? 8 : 2 })}`
+    : 'Loading...'
   const copyAddress = async () => {
     try {
       if (!payment?.address) throw new Error('No address')
@@ -247,13 +272,11 @@ function CryptoDeposit({ method, user }) {
     const cleaned = value.replace(/[^\d]/g, '')
     setCoins(cleaned)
     setUsd(((Number(cleaned) || 0) / 100).toFixed(2))
-    setCrypto('0.00000000')
   }
   const fromUsd = (value) => {
     const cleaned = value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1')
     setUsd(cleaned)
     setCoins(String(Math.round((Number(cleaned) || 0) * 100)))
-    setCrypto('0.00000000')
   }
   const createDeposit = async () => {
     if (!user) return notify({ type: 'error', message: 'Please sign in to perform this action.' })
@@ -265,7 +288,6 @@ function CryptoDeposit({ method, user }) {
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to generate a deposit address.')
       setPayment(payload.payment)
-      setCrypto(Number(payload.payment.payAmount || 0).toFixed(8))
       setUsd(Number(payload.payment.usdAmount || 0).toFixed(2))
     } catch (error) {
       notify({ type: 'error', message: error.message || 'Unable to generate a deposit address.' })
@@ -277,10 +299,10 @@ function CryptoDeposit({ method, user }) {
     <div className="crypto-content" {...cryptoModalScope}>
       <div className="crypto-header" {...cryptoModalScope}><div className="header-text" {...cryptoModalScope}>Deposit Crypto</div></div>
       <div className="cashier-crypto-deposit" {...cryptoDepositScope}>
-        <div className="deposit-header" {...cryptoDepositScope}><div className="header-icon" {...cryptoDepositScope}><img src={method[2]} alt="crypto icon" {...cryptoDepositScope} /></div><div className="header-text" {...cryptoDepositScope}><div className="header-title" {...cryptoDepositScope}>Deposit {detail.name}</div><div className="header-price" {...cryptoDepositScope}>$0.00</div></div></div>
+        <div className="deposit-header" {...cryptoDepositScope}><div className="header-icon" {...cryptoDepositScope}><img src={method[2]} alt="crypto icon" {...cryptoDepositScope} /></div><div className="header-text" {...cryptoDepositScope}><div className="header-title" {...cryptoDepositScope}>Deposit {detail.name}</div><div className="header-price" {...cryptoDepositScope}>{displayedPrice}</div></div></div>
         <div className="deposit-card" {...cryptoDepositScope}>
           <div className="card-qrcode" {...cryptoDepositScope}><div className="qrcode-content" {...cryptoDepositScope}>{payment?.qrCode ? <img className="placeholder-qr" src={payment.qrCode} alt="Deposit QR code" {...cryptoDepositScope} /> : <PlaceholderQr />}</div></div>
-          <div className="card-info" {...cryptoDepositScope}><div className="info-instructions" {...cryptoDepositScope}>Send exactly {payment ? `${payment.payAmount} ${payment.currency}` : `the generated amount of ${detail.name}`} to receive the equivalent in Coins. Only send through the {detail.network} network to this address.</div><div className="info-address" {...cryptoDepositScope}><div className="address-label" {...cryptoDepositScope}>Your personal {detail.name} deposit address:</div><div className="address-input" {...cryptoDepositScope}><div className="input-content" {...cryptoDepositScope}><input type="text" readOnly value={payment?.address || 'Generate an address below'} aria-label={`${detail.name} deposit address`} {...cryptoDepositScope} /><button className="button-copy" type="button" title="Copy to clipboard" disabled={!payment?.address} onClick={copyAddress} {...cryptoDepositScope}><CopyIcon {...cryptoDepositScope} /></button></div></div></div></div>
+          <div className="card-info" {...cryptoDepositScope}><div className="info-instructions" {...cryptoDepositScope}>Send exactly {payment ? `${payment.payAmount} ${payment.currency}` : `the generated amount of ${detail.name}`} to receive the equivalent in Coins. Only send through the {detail.network} network to this address.</div><div className="info-address" {...cryptoDepositScope}><div className="address-label" {...cryptoDepositScope}>Your personal {detail.name} deposit address:</div><div className="address-input" {...cryptoDepositScope}><div className="input-content" {...cryptoDepositScope}><input type="text" readOnly value={payment?.address || ''} aria-label={`${detail.name} deposit address`} {...cryptoDepositScope} /><button className="button-copy" type="button" title="Copy to clipboard" disabled={!payment?.address} onClick={copyAddress} {...cryptoDepositScope}><CopyIcon {...cryptoDepositScope} /></button></div></div></div></div>
         </div>
         {user && <div className="deposit-bonus" {...cryptoDepositScope}><div className="bonus-title-row" {...cryptoDepositScope}><span className="bonus-title" {...cryptoDepositScope}>Deposit Bonus Code</span></div><div className="bonus-row" {...cryptoDepositScope}><div className="bonus-input-wrap" {...cryptoDepositScope}><input type="text" placeholder="Enter code" maxLength="32" value={bonus} onChange={(event) => setBonus(event.target.value)} {...cryptoDepositScope} /></div><button className="bonus-apply-button" type="button" disabled={!bonus.trim()} onClick={() => notify({ type: 'error', message: 'Your entered deposit bonus code is invalid.' })} {...cryptoDepositScope}>Apply</button></div></div>}
         <div className="deposit-exchange" {...cryptoDepositScope}><div className="exchange-title" {...cryptoDepositScope}>Exchange</div><div className="exchange-content" {...cryptoDepositScope}><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src="/assets/currency/coin.svg" alt="icon" {...cryptoDepositScope} /><input type="text" inputMode="numeric" placeholder="0" value={coins} disabled={Boolean(payment)} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src={method[2]} alt="" {...cryptoDepositScope} /><input type="text" placeholder="0" value={crypto} readOnly {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content element-usd" {...cryptoDepositScope}><div className="usd-icon" {...cryptoDepositScope}><img src="/assets/currency/usd.4027001f.svg" alt="USD icon" {...cryptoDepositScope} /></div><input type="text" inputMode="decimal" placeholder="0.00" value={usd} disabled={Boolean(payment)} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoDepositScope} /></div></div></div><button className="button-withdraw" type="button" disabled={loading} onClick={payment ? () => setPayment(null) : createDeposit} {...cryptoDepositScope}><div className="button-inner" {...cryptoDepositScope}><div className="inner-content" {...cryptoDepositScope}>{loading ? 'Generating...' : payment ? 'Generate New Address' : 'Generate Deposit Address'}</div></div></button></div>

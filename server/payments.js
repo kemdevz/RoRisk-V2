@@ -1,16 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
 export async function handlePaymentsRequest({ request, response, url, env, api }) {
-  const { sendJson, readJson, startRealtimeSession, supabaseRequest, oxaPayRequest, paymentCallbackUrl, validOxaSignature, currentCryptoQuote, readRawBody, sendText, requestSessionUser, OXAPAY_API_URL, COINS_PER_USD } = api
+  const { sendJson, readJson, startRealtimeSession, supabaseRequest, oxaPayRequest, paymentCallbackUrl, validOxaSignature, currentCryptoQuote, loadOxaMarket, readRawBody, sendText, requestSessionUser, COINS_PER_USD } = api
     if (request.method === 'GET' && url.pathname === '/api/payments/oxapay/currencies') {
-      const [currenciesResponse, pricesResponse] = await Promise.all([
-        fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
-        fetch(`${OXAPAY_API_URL}/common/prices`, { signal: AbortSignal.timeout(10000) }),
-      ])
-      if (!currenciesResponse.ok || !pricesResponse.ok) throw new Error('Unable to retrieve supported cryptocurrencies.')
-      const currencies = await currenciesResponse.json()
-      const prices = await pricesResponse.json()
-      sendJson(response, 200, { currencies: currencies.data || {}, prices: prices.data || {} })
+      sendJson(response, 200, await loadOxaMarket())
       return true
     }
 

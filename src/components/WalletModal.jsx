@@ -47,12 +47,75 @@ const cryptoMethods = {
   ],
 }
 
-function MethodCard({ method, label, image, onClick }) {
+let cryptoMarketCache = null
+let cryptoMarketRequest = null
+const preparedDepositCache = new Map()
+
+async function loadCryptoMarket() {
+  if (cryptoMarketCache && cryptoMarketCache.expiresAt > Date.now()) return cryptoMarketCache.data
+  if (cryptoMarketRequest) return cryptoMarketRequest
+  cryptoMarketRequest = fetch('/api/payments/oxapay/currencies', { cache: 'no-store' })
+    .then(async (response) => {
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to retrieve current crypto prices.')
+      cryptoMarketCache = { data: payload, expiresAt: Date.now() + 30_000 }
+      return payload
+    })
+    .finally(() => { cryptoMarketRequest = null })
+  return cryptoMarketRequest
+}
+
+function preloadImage(source) {
+  if (!source) return Promise.resolve()
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.onload = resolve
+    image.onerror = resolve
+    image.src = source
+  })
+}
+
+async function prepareCryptoDeposit(method, user) {
+  const currency = method[0]
+  const detail = cryptoDetails[currency]
+  const userId = user?.uuid || user?.id
+  if (!userId) throw new Error('Please sign in to perform this action.')
+  const key = `${userId}:${currency}:1000`
+  const cached = preparedDepositCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.promise
+
+  const promise = Promise.all([
+    loadCryptoMarket(),
+    fetch('/api/payments/oxapay/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coinAmount: 1000, currency: currency.toUpperCase(), network: detail.oxaNetwork }),
+    }).then(async (response) => {
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to generate a deposit address.')
+      return payload.payment
+    }),
+  ]).then(async ([market, payment]) => {
+    await preloadImage(payment.qrCode)
+    const providerExpiry = Number(payment.expiresAt) * 1000
+    const entry = preparedDepositCache.get(key)
+    if (entry) entry.expiresAt = Number.isFinite(providerExpiry) ? providerExpiry - 15_000 : Date.now() + 55 * 60_000
+    return { market, payment }
+  }).catch((error) => {
+    preparedDepositCache.delete(key)
+    throw error
+  })
+
+  preparedDepositCache.set(key, { promise, expiresAt: Date.now() + 55 * 60_000 })
+  return promise
+}
+
+function MethodCard({ method, label, image, onClick, disabled = false, loading = false, onPrefetch }) {
   return (
-    <button className={`cashier-element element-${method}`} type="button" onClick={onClick} {...elementScope}>
+    <button className={`cashier-element element-${method}`} type="button" disabled={disabled} onPointerEnter={onPrefetch} onFocus={onPrefetch} onClick={onClick} {...elementScope}>
       <div className="element-inner" {...elementScope}>
         <div className="inner-image" {...elementScope}><img src={image} alt="" {...elementScope} /></div>
-        <div className="text-method" {...elementScope}>{label}</div>
+        <div className="text-method" {...elementScope}>{loading ? 'Preparing...' : label}</div>
       </div>
       <div className="element-glow" {...elementScope} />
     </button>
@@ -225,32 +288,24 @@ function useOutInState(initialValue, resolveElement, variant = 'step') {
   return [value, transitionTo]
 }
 
-function CryptoDeposit({ method, user }) {
+function CryptoDeposit({ method, prepared }) {
   const currency = method[0]
   const detail = cryptoDetails[currency]
   const [coins, setCoins] = useState('1,000')
-  const [usd, setUsd] = useState('10.00')
-  const [cryptoPrice, setCryptoPrice] = useState(null)
+  const [usd, setUsd] = useState(() => Number(prepared.payment.usdAmount || 10).toFixed(2))
+  const [cryptoPrice, setCryptoPrice] = useState(() => Number(prepared.market.prices?.[currency.toUpperCase()]) || null)
   const [bonus, setBonus] = useState('')
-  const [payment, setPayment] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const automaticRequestRef = useRef(false)
+  const payment = prepared.payment
   useEffect(() => {
-    const controller = new AbortController()
     const loadPrice = async () => {
       try {
-        const response = await fetch('/api/payments/oxapay/currencies', { cache: 'no-store', signal: controller.signal })
-        const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || 'Unable to retrieve the current price.')
+        const payload = await loadCryptoMarket()
         const price = Number(payload.prices?.[currency.toUpperCase()])
         if (!Number.isFinite(price) || price <= 0) throw new Error('The current price is unavailable.')
         setCryptoPrice(price)
-      } catch (error) {
-        if (error.name !== 'AbortError') setCryptoPrice(null)
-      }
+      } catch { setCryptoPrice(null) }
     }
     void loadPrice()
-    return () => controller.abort()
   }, [currency])
   const crypto = payment
     ? Number(payment.payAmount || 0).toFixed(8)
@@ -279,28 +334,6 @@ function CryptoDeposit({ method, user }) {
     setUsd(cleaned)
     setCoins(String(Math.round((Number(cleaned) || 0) * 100)))
   }
-  const createDeposit = useCallback(async () => {
-    if (!user) return notify({ type: 'error', message: 'Please sign in to perform this action.' })
-    const coinAmount = Math.floor(Number(String(coins).replace(/,/g, '')) || 0)
-    if (coinAmount < 100) return notify({ type: 'error', message: 'Minimum deposit amount is $1.00 USD.' })
-    setLoading(true)
-    try {
-      const response = await fetch('/api/payments/oxapay/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coinAmount, currency: currency.toUpperCase(), network: detail.oxaNetwork }) })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Unable to generate a deposit address.')
-      setPayment(payload.payment)
-      setUsd(Number(payload.payment.usdAmount || 0).toFixed(2))
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Unable to generate a deposit address.' })
-    } finally {
-      setLoading(false)
-    }
-  }, [coins, currency, detail.oxaNetwork, user])
-  useEffect(() => {
-    if (!user || automaticRequestRef.current) return
-    automaticRequestRef.current = true
-    void createDeposit()
-  }, [createDeposit, user])
   return <div className="modal-crypto" {...cryptoModalScope}>
     <div className="crypto-content" {...cryptoModalScope}>
       <div className="crypto-header" {...cryptoModalScope}><div className="header-text" {...cryptoModalScope}>Deposit Crypto</div></div>
@@ -310,8 +343,8 @@ function CryptoDeposit({ method, user }) {
           <div className="card-qrcode" {...cryptoDepositScope}><div className="qrcode-content" {...cryptoDepositScope}>{payment?.qrCode ? <img className="placeholder-qr" src={payment.qrCode} alt="Deposit QR code" {...cryptoDepositScope} /> : <PlaceholderQr />}</div></div>
           <div className="card-info" {...cryptoDepositScope}><div className="info-instructions" {...cryptoDepositScope}>Send exactly {payment ? `${payment.payAmount} ${payment.currency}` : `the generated amount of ${detail.name}`} to receive the equivalent in Coins. Only send through the {detail.network} network to this address.</div><div className="info-address" {...cryptoDepositScope}><div className="address-label" {...cryptoDepositScope}>Your personal {detail.name} deposit address:</div><div className="address-input" {...cryptoDepositScope}><div className="input-content" {...cryptoDepositScope}><input type="text" readOnly value={payment?.address || ''} aria-label={`${detail.name} deposit address`} {...cryptoDepositScope} /><button className="button-copy" type="button" title="Copy to clipboard" disabled={!payment?.address} onClick={copyAddress} {...cryptoDepositScope}><CopyIcon {...cryptoDepositScope} /></button></div></div></div></div>
         </div>
-        {user && <div className="deposit-bonus" {...cryptoDepositScope}><div className="bonus-title-row" {...cryptoDepositScope}><span className="bonus-title" {...cryptoDepositScope}>Deposit Bonus Code</span></div><div className="bonus-row" {...cryptoDepositScope}><div className="bonus-input-wrap" {...cryptoDepositScope}><input type="text" placeholder="Enter code" maxLength="32" value={bonus} onChange={(event) => setBonus(event.target.value)} {...cryptoDepositScope} /></div><button className="bonus-apply-button" type="button" disabled={!bonus.trim()} onClick={() => notify({ type: 'error', message: 'Your entered deposit bonus code is invalid.' })} {...cryptoDepositScope}>Apply</button></div></div>}
-        <div className="deposit-exchange" {...cryptoDepositScope}><div className="exchange-title" {...cryptoDepositScope}>Exchange</div><div className="exchange-content" {...cryptoDepositScope}><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src="/assets/currency/coin.svg" alt="icon" {...cryptoDepositScope} /><input type="text" inputMode="numeric" placeholder="0" value={coins} disabled={loading || Boolean(payment)} onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src={method[2]} alt="" {...cryptoDepositScope} /><input type="text" placeholder="0" value={crypto} readOnly {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content element-usd" {...cryptoDepositScope}><div className="usd-icon" {...cryptoDepositScope}><img src="/assets/currency/usd.4027001f.svg" alt="USD icon" {...cryptoDepositScope} /></div><input type="text" inputMode="decimal" placeholder="0.00" value={usd} disabled={loading || Boolean(payment)} onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoDepositScope} /></div></div></div></div>
+        <div className="deposit-bonus" {...cryptoDepositScope}><div className="bonus-title-row" {...cryptoDepositScope}><span className="bonus-title" {...cryptoDepositScope}>Deposit Bonus Code</span></div><div className="bonus-row" {...cryptoDepositScope}><div className="bonus-input-wrap" {...cryptoDepositScope}><input type="text" placeholder="Enter code" maxLength="32" value={bonus} onChange={(event) => setBonus(event.target.value)} {...cryptoDepositScope} /></div><button className="bonus-apply-button" type="button" disabled={!bonus.trim()} onClick={() => notify({ type: 'error', message: 'Your entered deposit bonus code is invalid.' })} {...cryptoDepositScope}>Apply</button></div></div>
+        <div className="deposit-exchange" {...cryptoDepositScope}><div className="exchange-title" {...cryptoDepositScope}>Exchange</div><div className="exchange-content" {...cryptoDepositScope}><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src="/assets/currency/coin.svg" alt="icon" {...cryptoDepositScope} /><input type="text" inputMode="numeric" placeholder="0" value={coins} disabled onChange={(event) => fromCoins(event.target.value)} onBlur={() => setCoins(formatInteger(coins))} {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content" {...cryptoDepositScope}><img src={method[2]} alt="" {...cryptoDepositScope} /><input type="text" placeholder="0" value={crypto} readOnly {...cryptoDepositScope} /></div></div><span className="equals" {...cryptoDepositScope}>=</span><div className="exchange-element" {...cryptoDepositScope}><div className="element-content element-usd" {...cryptoDepositScope}><div className="usd-icon" {...cryptoDepositScope}><img src="/assets/currency/usd.4027001f.svg" alt="USD icon" {...cryptoDepositScope} /></div><input type="text" inputMode="decimal" placeholder="0.00" value={usd} disabled onChange={(event) => fromUsd(event.target.value)} onBlur={() => setUsd((Number(usd) || 0).toFixed(2))} {...cryptoDepositScope} /></div></div></div></div>
       </div>
     </div>
   </div>
@@ -500,8 +533,30 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
   const [tab, setTab] = useState(initialTab)
   const [method, setMethod] = useOutInState(null, () => document.querySelector('.modal-content-host')?.firstElementChild, 'modal')
   const [conversion, setConversion] = useState('rocoins')
+  const [preparedDeposit, setPreparedDeposit] = useState(null)
+  const [preparingCurrency, setPreparingCurrency] = useState('')
   const methods = useMemo(() => cryptoMethods[tab] || [], [tab])
   const chooseTab = (next) => { setMethod(null); setTab(next) }
+
+  useEffect(() => {
+    void loadCryptoMarket().catch(() => {})
+  }, [])
+
+  const openCryptoMethod = async (item) => {
+    if (tab !== 'deposit') { setMethod(item); return }
+    if (!user) { notify({ type: 'error', message: 'Please sign in to perform this action.' }); return }
+    if (preparingCurrency) return
+    setPreparingCurrency(item[0])
+    try {
+      const prepared = await prepareCryptoDeposit(item, user)
+      setPreparedDeposit({ currency: item[0], ...prepared })
+      setMethod(item)
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Unable to prepare this crypto deposit.' })
+    } finally {
+      setPreparingCurrency('')
+    }
+  }
 
   useEffect(() => {
     if (!method) return undefined
@@ -526,7 +581,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
 
   if (method === 'robux') return tab === 'deposit' ? <RobuxDeposit user={user} /> : <RobuxWithdraw user={user} onDone={onRequestClose} />
   if (method === 'limiteds') return <LimitedsDeposit user={user} />
-  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} user={user} /> : <CryptoWithdraw method={method} user={user} />
+  if (Array.isArray(method)) return tab === 'deposit' ? <CryptoDeposit method={method} prepared={preparedDeposit} /> : <CryptoWithdraw method={method} user={user} />
 
   return (
     <div className="modal-cashier" {...cashierScope}>
@@ -537,7 +592,7 @@ function WalletModal({ initialTab = 'deposit', user, onRequestClose }) {
         <div className="cashier-stage" {...cashierScope}>
           {tab === 'deposit' || tab === 'withdraw' ? <div className="crypto-section" {...cashierScope}>
             <section className="cashier-block" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>In-Game · <img className="cashier-block-currency-icon" src="/assets/currency/rocoin.2d3febd5.svg" alt="RoCoins" {...cashierScope} /></h2><div className="in-game-banners" {...cashierScope}><button className="game-banner game-banner--robux" type="button" onClick={() => setMethod('robux')} {...cashierScope}><span className="game-banner-title" {...cashierScope}>Robux</span><img className="game-banner-art" src="/assets/payments/robux.2244c5eb.png" alt="" {...cashierScope} /></button><button className="game-banner game-banner--limiteds" type="button" onClick={() => tab === 'deposit' ? setMethod('limiteds') : openMarket()} {...cashierScope}><span className="game-banner-title" {...cashierScope}>Limiteds</span><img className="game-banner-art game-banner-art--valk" src="/assets/payments/valk.3e69ac3a.png" alt="" {...cashierScope} /></button></div></section>
-            <section className="cashier-block" {...cashierScope}><div className="cashier-block-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Crypto · <img className="cashier-block-currency-icon" src="/assets/currency/coin.svg" alt="Coins" {...cashierScope} /></h2></div><div className="crypto-grid" {...cashierScope}>{methods.map((item) => <MethodCard key={item[0]} method={item[0]} label={item[1]} image={item[2]} onClick={() => setMethod(item)} />)}</div></section>
+            <section className="cashier-block" {...cashierScope}><div className="cashier-block-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Crypto · <img className="cashier-block-currency-icon" src="/assets/currency/coin.svg" alt="Coins" {...cashierScope} /></h2></div><div className="crypto-grid" {...cashierScope}>{methods.map((item) => <MethodCard key={item[0]} method={item[0]} label={item[1]} image={item[2]} disabled={Boolean(preparingCurrency)} loading={preparingCurrency === item[0]} onPrefetch={() => { void loadCryptoMarket().catch(() => {}) }} onClick={() => { void openCryptoMethod(item) }} />)}</div></section>
             {tab === 'deposit' && <section className="cashier-block cashier-block--conversion" {...cashierScope}><div className="conversion-heading" {...cashierScope}><h2 className="cashier-block-title" {...cashierScope}>Currency Conversion</h2><button className="conversion-switch" type="button" onClick={() => setConversion((value) => value === 'rocoins' ? 'coins' : 'rocoins')} {...cashierScope}>Switch to {conversion === 'rocoins' ? 'Coins' : 'RoCoins'}</button></div><div className="conversion-exchange" {...cashierScope}><div className="exchange-element" {...cashierScope}><div className="element-content" {...cashierScope}><img src={conversion === 'rocoins' ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/currency/coin.svg'} alt="" {...cashierScope} /><input value="1,000" readOnly aria-label={conversion === 'rocoins' ? 'RoCoins' : 'Coins'} {...cashierScope} /></div></div><span className="equals" {...cashierScope}>=</span><div className="exchange-element" {...cashierScope}><div className={`element-content${conversion === 'rocoins' ? ' element-robux' : ''}`} {...cashierScope}><img src={conversion === 'rocoins' ? '/assets/payments/rbx.62091f8a.png' : '/assets/currency/coin.svg'} alt="" {...cashierScope} /><input value={conversion === 'rocoins' ? '500' : '1.00'} readOnly aria-label={conversion === 'rocoins' ? 'Robux' : 'USD'} {...cashierScope} /></div></div></div></section>}
           </div> : tab === 'vault' ? <div className="vault-section" {...cashierScope}><Vault user={user} /></div> : <div className="redeem-section" {...cashierScope}><Redeem /></div>}
         </div>

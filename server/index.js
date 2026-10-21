@@ -189,6 +189,24 @@ async function supabaseRequest(env, path, options = {}) {
 
 const COINS_PER_USD = 100
 const OXAPAY_API_URL = 'https://api.oxapay.com/v1'
+let oxaMarketCache = null
+let oxaMarketRequest = null
+
+async function loadOxaMarket() {
+  if (oxaMarketCache && oxaMarketCache.expiresAt > Date.now()) return oxaMarketCache.data
+  if (oxaMarketRequest) return oxaMarketRequest
+  oxaMarketRequest = Promise.all([
+    fetch(`${OXAPAY_API_URL}/common/prices`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
+  ]).then(async ([pricesResponse, currenciesResponse]) => {
+    if (!pricesResponse.ok || !currenciesResponse.ok) throw new Error('Unable to retrieve the current cryptocurrency quote.')
+    const [prices, currencies] = await Promise.all([pricesResponse.json(), currenciesResponse.json()])
+    const data = { prices: prices.data || {}, currencies: currencies.data || {} }
+    oxaMarketCache = { data, expiresAt: Date.now() + 15_000 }
+    return data
+  }).finally(() => { oxaMarketRequest = null })
+  return oxaMarketRequest
+}
 
 async function oxaPayRequest(path, apiKeyName, apiKey, options = {}) {
   if (!apiKey) throw new Error('Crypto payments are not configured on this server.')
@@ -231,15 +249,9 @@ function validOxaSignature(rawBody, suppliedSignature, secret) {
 async function currentCryptoQuote(currency, network) {
   const symbol = String(currency || '').trim().toUpperCase()
   if (!/^[A-Z0-9]{2,12}$/.test(symbol)) throw new Error('The selected cryptocurrency is invalid.')
-  const [pricesResponse, currenciesResponse] = await Promise.all([
-    fetch(`${OXAPAY_API_URL}/common/prices`, { signal: AbortSignal.timeout(10000) }),
-    fetch(`${OXAPAY_API_URL}/common/currencies`, { signal: AbortSignal.timeout(10000) }),
-  ])
-  if (!pricesResponse.ok || !currenciesResponse.ok) throw new Error('Unable to retrieve the current cryptocurrency quote.')
-  const prices = await pricesResponse.json()
-  const currencies = await currenciesResponse.json()
-  const price = Number(prices?.data?.[symbol])
-  const currencyData = currencies?.data?.[symbol]
+  const { prices, currencies } = await loadOxaMarket()
+  const price = Number(prices[symbol])
+  const currencyData = currencies[symbol]
   if (!currencyData?.status || !Number.isFinite(price) || price <= 0) throw new Error('The selected cryptocurrency is currently unavailable.')
   const networks = Object.values(currencyData.networks || {})
   const requestedNetwork = String(network || '').trim().toLowerCase()
@@ -1311,6 +1323,7 @@ const routeApi = Object.freeze({
   createChallenge,
   createMinesDeck,
   currentCryptoQuote,
+  loadOxaMarket,
   demoCaseOutcomes,
   findRobloxUser,
   getLimitedCatalog,

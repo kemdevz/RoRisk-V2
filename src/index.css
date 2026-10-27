@@ -656,6 +656,10 @@
   background: #ffd75e;
   color: #2a2210;
 }
+.currency-badge.usd[data-v-d934db46] {
+  background: #3cb482;
+  color: #fff;
+}
 .navbar-currency-badge[data-v-d934db46] {
   min-width: 0;
   height: 28px;
@@ -887,6 +891,9 @@
 }
 .navbar-cashier .balance-inner.rocoin[data-v-d934db46],.navbar-cashier .balance-inner[data-v-d934db46] {
   background: linear-gradient(90deg,#f4c84c38 0,#253a4d00 80%) padding-box,linear-gradient(90deg,#253a4d,#253a4d) padding-box,linear-gradient(90deg,#ffd75e,#8f7424,transparent) border-box;
+}
+.navbar-cashier .balance-inner.usd[data-v-d934db46] {
+  background: linear-gradient(90deg,#93ffc02d 0,#253a4d00 80%) padding-box,linear-gradient(90deg,#253a4d,#253a4d) padding-box,linear-gradient(90deg,#97ffc2,#253a4d,transparent) border-box;
 }
 .navbar-cashier .balance-inner .button-cashier .button-inner[data-v-d934db46] {
   width: 100%;

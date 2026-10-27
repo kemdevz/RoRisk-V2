@@ -78,11 +78,18 @@ function userLevelData(user) {
   return { level: Math.min(129, Math.max(0, Number(user?.level) || 0)), progress: 0 }
 }
 
-function formatBalance(value) {
-  return Math.floor(Number(value) || 0).toLocaleString('en-US')
+function formatBalance(value, decimalPlaces = 0) {
+  const number = Number(value) || 0
+  if (decimalPlaces > 0) {
+    return number.toLocaleString('en-US', {
+      minimumFractionDigits: decimalPlaces,
+      maximumFractionDigits: decimalPlaces,
+    })
+  }
+  return Math.floor(number).toLocaleString('en-US')
 }
 
-function AmountNumber({ amount, className = '', isPlus = false, duration = 1000, easeOut = false }) {
+function AmountNumber({ amount, className = '', isPlus = false, duration = 1000, easeOut = false, decimalPlaces = 0 }) {
   const target = Number(amount) || 0
   const [current, setCurrent] = useState(target)
   const currentRef = useRef(target)
@@ -117,7 +124,7 @@ function AmountNumber({ amount, className = '', isPlus = false, duration = 1000,
     }
   }, [duration, easeOut, target])
 
-  return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current)}</span></div>
+  return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current, decimalPlaces)}</span></div>
 }
 
 function RankBadge({ rank, className = '' }) {
@@ -128,6 +135,7 @@ function RankBadge({ rank, className = '' }) {
 function NavbarCashier({ user, onOpenWallet }) {
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const [balanceChanges, setBalanceChanges] = useState([])
+  const [showUsdBalance, setShowUsdBalance] = useState(false)
   const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
   const areaRef = useRef(null)
   const previousBalanceRef = useRef(null)
@@ -139,6 +147,7 @@ function NavbarCashier({ user, onOpenWallet }) {
   const currencyRef = useRef(currency)
   const isRoCoins = currency === 'rocoins'
   const balance = Number(isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)) || 0
+  const usdBalance = balance * (isRoCoins ? 0.002 : 0.01)
   const currencyIcon = isRoCoins ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/rewards/legacy/coin.12f4bce8.svg'
   const alternateIcon = isRoCoins ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
   const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
@@ -147,6 +156,8 @@ function NavbarCashier({ user, onOpenWallet }) {
   useEffect(() => {
     currencyRef.current = currency
   }, [currency])
+
+  const supportsHover = () => window.matchMedia?.('(hover: hover) and (pointer: fine)').matches
 
   const showBalanceChange = useCallback((amount) => {
     if (!amount) return
@@ -276,14 +287,14 @@ function NavbarCashier({ user, onOpenWallet }) {
     <div className="navbar-cashier" {...cashierScope}>
       <div className="cashier-container" {...cashierScope}>
         <div className="balance-area" ref={areaRef} {...cashierScope}>
-          <div className="cashier-balance" {...cashierScope}>
-            <div className={`balance-inner ${isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
+          <div className="cashier-balance" onMouseEnter={() => { if (supportsHover()) setShowUsdBalance(true) }} onMouseLeave={() => setShowUsdBalance(false)} {...cashierScope}>
+            <div className={`balance-inner ${showUsdBalance ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
               <div className="balance-inner-left" {...cashierScope}>
-                <img src={currencyIcon} alt="icon" {...cashierScope} />
-                <AmountNumber className="cashier-balance-text" amount={balance} duration={380} easeOut />
+                <img src={showUsdBalance ? '/assets/currency/usd.4027001f.svg' : currencyIcon} alt={showUsdBalance ? 'USD' : 'icon'} {...cashierScope} />
+                <AmountNumber key={showUsdBalance ? 'usd' : currency} className="cashier-balance-text" amount={showUsdBalance ? usdBalance : balance} decimalPlaces={showUsdBalance ? 2 : 0} duration={380} easeOut />
               </div>
               <div className="balance-inner-right" {...cashierScope}>
-                <span className={`currency-badge navbar-currency-badge ${isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
+                <span className={`currency-badge navbar-currency-badge ${showUsdBalance ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{showUsdBalance ? 'USD' : isRoCoins ? 'RoCoins' : 'Coins'}</span>
               </div>
             </div>
           </div>

@@ -55,7 +55,7 @@ function useDropdownTransition(duration, transitionName) {
         ? `${transitionName}-enter-active`
         : ''
 
-  return { close, expanded: phase !== 'closed' && phase !== 'leave', rendered: phase !== 'closed', toggle, transitionClass }
+  return { close, expanded: phase !== 'closed' && phase !== 'leave', open, rendered: phase !== 'closed', toggle, transitionClass }
 }
 
 function userLevelData(user) {
@@ -136,7 +136,7 @@ function NavbarCashier({ user, onOpenWallet }) {
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const [balanceChanges, setBalanceChanges] = useState([])
   const [showUsdBalance, setShowUsdBalance] = useState(false)
-  const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
+  const { close: closeDropdown, expanded, open: openDropdown, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
   const areaRef = useRef(null)
   const previousBalanceRef = useRef(null)
   const balanceKeyRef = useRef(null)
@@ -158,6 +158,17 @@ function NavbarCashier({ user, onOpenWallet }) {
   }, [currency])
 
   const supportsHover = () => window.matchMedia?.('(hover: hover) and (pointer: fine)').matches
+  const openBalanceMenu = () => {
+    if (supportsHover()) openDropdown()
+  }
+  const closeBalanceMenu = () => {
+    if (!supportsHover()) return
+    setShowUsdBalance(false)
+    closeDropdown()
+  }
+  const toggleBalanceMenu = () => {
+    if (!supportsHover()) toggle()
+  }
 
   const showBalanceChange = useCallback((amount) => {
     if (!amount) return
@@ -286,9 +297,9 @@ function NavbarCashier({ user, onOpenWallet }) {
   return (
     <div className="navbar-cashier" {...cashierScope}>
       <div className="cashier-container" {...cashierScope}>
-        <div className="balance-area" ref={areaRef} {...cashierScope}>
+        <div className="balance-area" ref={areaRef} onMouseEnter={openBalanceMenu} onMouseLeave={closeBalanceMenu} {...cashierScope}>
           <div className="cashier-balance" onMouseEnter={() => { if (supportsHover()) setShowUsdBalance(true) }} onMouseLeave={() => setShowUsdBalance(false)} {...cashierScope}>
-            <div className={`balance-inner ${showUsdBalance ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
+            <div className={`balance-inner ${showUsdBalance ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggleBalanceMenu} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
               <div className="balance-inner-left" {...cashierScope}>
                 <img src={showUsdBalance ? '/assets/currency/usd.4027001f.svg' : currencyIcon} alt={showUsdBalance ? 'USD' : 'icon'} {...cashierScope} />
                 <AmountNumber key={showUsdBalance ? 'usd' : currency} className="cashier-balance-text" amount={showUsdBalance ? usdBalance : balance} decimalPlaces={showUsdBalance ? 2 : 0} duration={380} easeOut />

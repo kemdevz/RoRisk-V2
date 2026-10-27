@@ -602,6 +602,14 @@
   z-index: 220;
   overflow: visible;
 }
+.currency-dropdown[data-v-d934db46]:before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 0;
+  right: 0;
+  height: 9px;
+}
 .currency-dropdown-locked[data-v-d934db46] {
   margin-bottom: 7px;
   padding: 8px 10px;

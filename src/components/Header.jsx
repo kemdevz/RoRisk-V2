@@ -55,7 +55,7 @@ function useDropdownTransition(duration, transitionName) {
         ? `${transitionName}-enter-active`
         : ''
 
-  return { close, expanded: phase !== 'closed' && phase !== 'leave', open, rendered: phase !== 'closed', toggle, transitionClass }
+  return { close, expanded: phase !== 'closed' && phase !== 'leave', rendered: phase !== 'closed', toggle, transitionClass }
 }
 
 function userLevelData(user) {
@@ -78,18 +78,11 @@ function userLevelData(user) {
   return { level: Math.min(129, Math.max(0, Number(user?.level) || 0)), progress: 0 }
 }
 
-function formatBalance(value, decimalPlaces = 0) {
-  const numericValue = Number(value) || 0
-  if (decimalPlaces > 0) {
-    return numericValue.toLocaleString('en-US', {
-      minimumFractionDigits: decimalPlaces,
-      maximumFractionDigits: decimalPlaces,
-    })
-  }
-  return Math.floor(numericValue).toLocaleString('en-US')
+function formatBalance(value) {
+  return Math.floor(Number(value) || 0).toLocaleString('en-US')
 }
 
-function AmountNumber({ amount, className = '', isPlus = false, duration = 1000, easeOut = false, decimalPlaces = 0 }) {
+function AmountNumber({ amount, className = '', isPlus = false, duration = 1000, easeOut = false }) {
   const target = Number(amount) || 0
   const [current, setCurrent] = useState(target)
   const currentRef = useRef(target)
@@ -124,7 +117,7 @@ function AmountNumber({ amount, className = '', isPlus = false, duration = 1000,
     }
   }, [duration, easeOut, target])
 
-  return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current, decimalPlaces)}</span></div>
+  return <div className={`amount-number${className ? ` ${className}` : ''}`} {...amountNumberScope} {...cashierScope}>{isPlus && current > 0 && <span>+</span>}<span>{formatBalance(current)}</span></div>
 }
 
 function RankBadge({ rank, className = '' }) {
@@ -135,8 +128,7 @@ function RankBadge({ rank, className = '' }) {
 function NavbarCashier({ user, onOpenWallet }) {
   const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
   const [balanceChanges, setBalanceChanges] = useState([])
-  const [showBalanceFiat, setShowBalanceFiat] = useState(false)
-  const { close: closeDropdown, expanded, open: openDropdown, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
+  const { close: closeDropdown, expanded, rendered, toggle, transitionClass } = useDropdownTransition(160, 'currency-dropdown')
   const areaRef = useRef(null)
   const previousBalanceRef = useRef(null)
   const balanceKeyRef = useRef(null)
@@ -147,7 +139,6 @@ function NavbarCashier({ user, onOpenWallet }) {
   const currencyRef = useRef(currency)
   const isRoCoins = currency === 'rocoins'
   const balance = Number(isRoCoins ? (user?.balanceRocoins ?? user?.rocoins) : (user?.balance ?? user?.coins)) || 0
-  const displayedBalance = showBalanceFiat ? balance * (isRoCoins ? 0.002 : 0.01) : balance
   const currencyIcon = isRoCoins ? '/assets/currency/rocoin.2d3febd5.svg' : '/assets/rewards/legacy/coin.12f4bce8.svg'
   const alternateIcon = isRoCoins ? '/assets/rewards/legacy/coin.12f4bce8.svg' : '/assets/currency/rocoin.2d3febd5.svg'
   const alternateCurrency = isRoCoins ? 'coins' : 'rocoins'
@@ -281,45 +272,18 @@ function NavbarCashier({ user, onOpenWallet }) {
     for (const timer of animationTimersRef.current) window.clearTimeout(timer)
   }, [])
 
-  const canHover = () => window.matchMedia?.('(hover: hover) and (pointer: fine)').matches
-  const handleAreaMouseEnter = () => {
-    if (canHover()) openDropdown()
-  }
-  const handleAreaMouseLeave = () => {
-    if (!canHover()) return
-    setShowBalanceFiat(false)
-    closeDropdown()
-  }
-  const handleBalanceMouseEnter = () => {
-    if (canHover()) setShowBalanceFiat(true)
-  }
-  const handleBalanceMouseLeave = () => {
-    if (canHover()) setShowBalanceFiat(false)
-  }
-  const handleBalanceClick = () => {
-    if (!canHover()) toggle()
-  }
-
   return (
     <div className="navbar-cashier" {...cashierScope}>
       <div className="cashier-container" {...cashierScope}>
-        <div className="balance-area" ref={areaRef} onMouseEnter={handleAreaMouseEnter} onMouseLeave={handleAreaMouseLeave} {...cashierScope}>
-          <div className="cashier-balance" onMouseEnter={handleBalanceMouseEnter} onMouseLeave={handleBalanceMouseLeave} {...cashierScope}>
-            <div className={`balance-inner ${showBalanceFiat ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={handleBalanceClick} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
+        <div className="balance-area" ref={areaRef} {...cashierScope}>
+          <div className="cashier-balance" {...cashierScope}>
+            <div className={`balance-inner ${isRoCoins ? 'rocoin' : 'coin'}`} role="button" tabIndex="0" aria-expanded={expanded} onClick={toggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }} {...cashierScope}>
               <div className="balance-inner-left" {...cashierScope}>
-                <span className="balance-icon-stack" {...cashierScope}>
-                  <img className={showBalanceFiat ? 'is-hidden' : ''} src={currencyIcon} alt={`${isRoCoins ? 'RoCoins' : 'Coins'} icon`} {...cashierScope} />
-                  <img className={showBalanceFiat ? '' : 'is-hidden'} src="/assets/currency/usd.4027001f.svg" alt="USD" {...cashierScope} />
-                </span>
-                <span className="balance-amount-stack" {...cashierScope}>
-                  <AmountNumber key={showBalanceFiat ? 'usd' : currency} className="cashier-balance-text" amount={displayedBalance} decimalPlaces={showBalanceFiat ? 2 : 0} duration={380} easeOut />
-                </span>
+                <img src={currencyIcon} alt="icon" {...cashierScope} />
+                <AmountNumber className="cashier-balance-text" amount={balance} duration={380} easeOut />
               </div>
               <div className="balance-inner-right" {...cashierScope}>
-                <span className={`currency-badge navbar-currency-badge ${showBalanceFiat ? 'usd' : isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>
-                  <span className={`badge-label${showBalanceFiat ? ' is-hidden' : ''}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
-                  <span className={`badge-label${showBalanceFiat ? '' : ' is-hidden'}`} {...cashierScope}>USD</span>
-                </span>
+                <span className={`currency-badge navbar-currency-badge ${isRoCoins ? 'rocoin' : 'coin'}`} {...cashierScope}>{isRoCoins ? 'RoCoins' : 'Coins'}</span>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 export async function handleCasesRequest({ request, response, url, env, api }) {
-  const { sendJson, readJson, startRealtimeSession, supabaseRequest, requestSessionUser, selectedCurrency, publicCase, demoCaseOutcomes } = api
+  const { sendJson, readJson, startRealtimeSession, supabaseRequest, requestSessionUser, selectedCurrency, publicCase, demoCaseOutcomes, primeLimitedImages } = api
     if (request.method === 'GET' && url.pathname === '/api/cases') {
       const currency = selectedCurrency(url.searchParams.get('currency'))
       const query = new URLSearchParams({
@@ -25,7 +25,9 @@ export async function handleCasesRequest({ request, response, url, env, api }) {
         sendJson(response, 404, { error: 'This case could not be found.' })
         return true
       }
-      sendJson(response, 200, { case: publicCase(rows[0], true, currency) })
+      const caseData = publicCase(rows[0], true, currency)
+      await primeLimitedImages(caseData.items)
+      sendJson(response, 200, { case: caseData })
       return true
     }
 

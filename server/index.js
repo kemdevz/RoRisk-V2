@@ -744,17 +744,29 @@ async function sendLimitedImage(response, assetId) {
   response.end(image.body)
 }
 
+function limitedImageAssetId(card) {
+  const directId = Number(card?.assetId || card?.itemId)
+  if (Number.isSafeInteger(directId) && directId > 0) return directId
+  const source = String(card?.image || card?.imageUrl || '')
+  const match = source.match(/^\/api\/case-images\/items\/(\d+)\.png(?:\?|$)/)
+    || source.match(/^\/api\/limited-items\/(\d+)\/image(?:\?|$)/)
+  const pathId = Number(match?.[1])
+  return Number.isSafeInteger(pathId) && pathId > 0 ? pathId : null
+}
+
 async function primeLimitedImages(cards, waitForData = false) {
-  const allAssetIds = [...new Set((cards || []).map((card) => Number(card.assetId || card.itemId)).filter((assetId) => Number.isSafeInteger(assetId) && assetId > 0))]
-  const assetIds = [...new Set((cards || []).map((card) => Number(card.assetId || card.itemId)).filter((assetId) => Number.isSafeInteger(assetId) && assetId > 0 && !limitedImageCache.has(assetId)))]
+  const allAssetIds = [...new Set((cards || []).map(limitedImageAssetId).filter(Boolean))]
+  const assetIds = allAssetIds.filter((assetId) => !limitedImageCache.has(assetId))
   if (assetIds.length) {
-    const query = new URLSearchParams({ assetIds: assetIds.join(','), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
     const batchRequest = (async () => {
-      const response = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
-      if (response.ok) {
-        const payload = await response.json()
-        for (const item of payload.data || []) {
-          if (item?.imageUrl && Number.isSafeInteger(Number(item.targetId))) limitedImageCache.set(Number(item.targetId), item.imageUrl)
+      for (let offset = 0; offset < assetIds.length; offset += 100) {
+        const query = new URLSearchParams({ assetIds: assetIds.slice(offset, offset + 100).join(','), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
+        const response = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
+        if (response.ok) {
+          const payload = await response.json()
+          for (const item of payload.data || []) {
+            if (item?.imageUrl && Number.isSafeInteger(Number(item.targetId))) limitedImageCache.set(Number(item.targetId), item.imageUrl)
+          }
         }
       }
     })()

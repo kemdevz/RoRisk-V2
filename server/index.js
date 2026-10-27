@@ -706,6 +706,43 @@ function rememberLimitedImageData(assetId, data) {
   }
 }
 
+const limitedImageRetryDelay = (attempt) => new Promise((resolve) => setTimeout(resolve, 200 * (2 ** attempt)))
+
+async function fetchLimitedImageResource(url, timeoutMs) {
+  let lastResponse = null
+  let lastError = null
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+      if (response.ok) return response
+      lastResponse = response
+      if (response.status !== 429 && response.status < 500) return response
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < 3) await limitedImageRetryDelay(attempt)
+  }
+  if (lastResponse) return lastResponse
+  throw lastError || new Error('Limited item image unavailable.')
+}
+
+async function cacheLimitedImageUrls(assetIds) {
+  let remaining = [...new Set(assetIds)].filter((assetId) => !limitedImageCache.has(assetId))
+  for (let attempt = 0; attempt < 4 && remaining.length; attempt += 1) {
+    const query = new URLSearchParams({ assetIds: remaining.join(','), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
+    const response = await fetchLimitedImageResource(`https://thumbnails.roblox.com/v1/assets?${query}`, 10000)
+    if (response.ok) {
+      const payload = await response.json()
+      for (const item of payload.data || []) {
+        if (item?.imageUrl && Number.isSafeInteger(Number(item.targetId))) limitedImageCache.set(Number(item.targetId), item.imageUrl)
+      }
+    }
+    remaining = remaining.filter((assetId) => !limitedImageCache.has(assetId))
+    if (remaining.length && attempt < 3) await limitedImageRetryDelay(attempt)
+  }
+  return remaining
+}
+
 async function limitedImageData(assetId) {
   const cached = limitedImageDataCache.get(assetId)
   if (cached) {
@@ -718,15 +755,11 @@ async function limitedImageData(assetId) {
     let imageUrl = limitedImageCache.get(assetId)
     if (!imageUrl && limitedImageUrlRequests.has(assetId)) imageUrl = await limitedImageUrlRequests.get(assetId)
     if (!imageUrl) {
-      const query = new URLSearchParams({ assetIds: String(assetId), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
-      const thumbnailResponse = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
-      if (!thumbnailResponse.ok) throw new Error('Limited item image unavailable.')
-      const thumbnail = await thumbnailResponse.json()
-      imageUrl = thumbnail.data?.[0]?.imageUrl
+      await cacheLimitedImageUrls([assetId])
+      imageUrl = limitedImageCache.get(assetId)
       if (!imageUrl) throw new Error('Limited item image unavailable.')
-      limitedImageCache.set(assetId, imageUrl)
     }
-    const imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
+    const imageResponse = await fetchLimitedImageResource(imageUrl, 15000)
     if (!imageResponse.ok) throw new Error('Limited item image unavailable.')
     const data = { body: Buffer.from(await imageResponse.arrayBuffer()), contentType: imageResponse.headers.get('content-type') || 'image/png' }
     rememberLimitedImageData(assetId, data)
@@ -760,14 +793,7 @@ async function primeLimitedImages(cards, waitForData = false) {
   if (assetIds.length) {
     const batchRequest = (async () => {
       for (let offset = 0; offset < assetIds.length; offset += 100) {
-        const query = new URLSearchParams({ assetIds: assetIds.slice(offset, offset + 100).join(','), returnPolicy: 'PlaceHolder', size: '420x420', format: 'Png', isCircular: 'false' })
-        const response = await fetch(`https://thumbnails.roblox.com/v1/assets?${query}`, { signal: AbortSignal.timeout(10000) })
-        if (response.ok) {
-          const payload = await response.json()
-          for (const item of payload.data || []) {
-            if (item?.imageUrl && Number.isSafeInteger(Number(item.targetId))) limitedImageCache.set(Number(item.targetId), item.imageUrl)
-          }
-        }
+        await cacheLimitedImageUrls(assetIds.slice(offset, offset + 100))
       }
     })()
     for (const assetId of assetIds) limitedImageUrlRequests.set(assetId, batchRequest.then(() => limitedImageCache.get(assetId)))

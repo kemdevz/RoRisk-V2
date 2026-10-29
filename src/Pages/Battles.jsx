@@ -2536,14 +2536,12 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
   const innerRef = useRef(null);
   const reelRef = useRef(null);
   const winnerRef = useRef(null);
-  const stripCentersRef = useRef([]);
   const [containerWidth, setContainerWidth] = useState(400);
   const [spinComplete, setSpinComplete] = useState(false);
   const [landed, setLanded] = useState(game?.state === "completed");
   const [winnerOnly, setWinnerOnly] = useState(game?.state === "completed");
-  const [winnerExpanded, setWinnerExpanded] = useState(game?.state === "completed");
+  const [winnerExpanded, setWinnerExpanded] = useState(false);
   const [landingOffset, setLandingOffset] = useState(0);
-  const [targetTranslate, setTargetTranslate] = useState(null);
   const [activeIndex, setActiveIndex] = useState(null);
   const weights = useMemo(() => {
     if (Array.isArray(game?.jackpotWeights) && game.jackpotWeights.length)
@@ -2620,6 +2618,11 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
     [segmentWidth, segments],
   );
   const targetIndex = 4 * segments.length + winnerIndex;
+  const wheelVisible = Boolean(
+    game?.options?.jackpot &&
+      segments.length &&
+      ["jackpot_spinning", "completed"].includes(game?.state),
+  );
   const reelStyle = useMemo(() => {
     if (!segments.length || winnerOnly)
       return { transform: "translateX(0px)", transition: "none" };
@@ -2628,17 +2631,13 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
     const index = spinComplete ? targetIndex : startIndex;
     const calculatedOffset =
       center - positionFor(index) + (spinComplete ? landingOffset : 0);
-    const offset =
-      spinComplete && Number.isFinite(targetTranslate)
-        ? targetTranslate
-        : calculatedOffset;
     return {
-      transform: `translateX(${offset}px)`,
+      transform: `translateX(${calculatedOffset}px)`,
       transition: spinComplete
         ? "transform 4000ms cubic-bezier(0.15, 0.5, 0.15, 1)"
         : "none",
     };
-  }, [containerWidth, landingOffset, positionFor, segments.length, spinComplete, targetIndex, targetTranslate, winnerOnly]);
+  }, [containerWidth, landingOffset, positionFor, segments.length, spinComplete, targetIndex, winnerOnly]);
   useLayoutEffect(() => {
     const element = innerRef.current;
     if (!element) return undefined;
@@ -2653,7 +2652,7 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
       observer?.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, []);
+  }, [wheelVisible]);
   useEffect(() => {
     if (game?.state !== "jackpot_spinning" || !segments.length) return undefined;
     const nextLandingOffset = (Math.random() - 0.5) * 40;
@@ -2663,22 +2662,7 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
       setWinnerOnly(false);
       setWinnerExpanded(false);
       setLandingOffset(nextLandingOffset);
-      setTargetTranslate(null);
     }, 0);
-    const measureTarget = window.setTimeout(() => {
-      const reel = reelRef.current;
-      const inner = innerRef.current;
-      const target = reel?.children?.[targetIndex];
-      if (!reel || !inner || !target) return;
-      stripCentersRef.current = Array.from(reel.children, (child) =>
-        child.offsetLeft + child.offsetWidth / 2,
-      );
-      setTargetTranslate(
-        inner.clientWidth / 2 -
-          (target.offsetLeft + target.offsetWidth / 2) +
-          nextLandingOffset,
-      );
-    }, 100);
     const start = window.setTimeout(() => setSpinComplete(true), 500);
     const finish = window.setTimeout(() => {
       setLanded(true);
@@ -2686,14 +2670,11 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
       playSound("tick", { volume: 0.5, dedupeMs: 200 });
     }, 4500);
     const collapse = window.setTimeout(() => setWinnerOnly(true), 4750);
-    const expand = window.setTimeout(() => setWinnerExpanded(true), 4770);
     return () => {
       window.clearTimeout(prepare);
-      window.clearTimeout(measureTarget);
       window.clearTimeout(start);
       window.clearTimeout(finish);
       window.clearTimeout(collapse);
-      window.clearTimeout(expand);
     };
   }, [game?._id, game?.state, segments.length, targetIndex]);
   useEffect(() => {
@@ -2703,26 +2684,13 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
       const reel = reelRef.current;
       const inner = innerRef.current;
       if (!reel || !inner) return;
-      const transform = window.getComputedStyle(reel).transform;
-      let translate = 0;
-      if (transform && transform !== "none") {
-        try {
-          translate = new DOMMatrixReadOnly(transform).m41;
-        } catch {
-          const values = transform
-            .slice(transform.indexOf("(") + 1, -1)
-            .split(",")
-            .map(Number);
-          translate = transform.startsWith("matrix3d")
-            ? Number(values[12]) || 0
-            : Number(values[4]) || 0;
-        }
-      }
-      const center = inner.clientWidth / 2;
+      const bounds = inner.getBoundingClientRect();
+      const center = bounds.left + bounds.width / 2;
       let closest = null;
       let distance = Number.POSITIVE_INFINITY;
-      stripCentersRef.current.forEach((itemCenter, index) => {
-        const next = Math.abs(itemCenter + translate - center);
+      Array.from(reel.children).forEach((child, index) => {
+        const childBounds = child.getBoundingClientRect();
+        const next = Math.abs(childBounds.left + childBounds.width / 2 - center);
         if (next < distance) {
           closest = index;
           distance = next;
@@ -2734,24 +2702,30 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
     frame = window.requestAnimationFrame(track);
     return () => window.cancelAnimationFrame(frame);
   }, [landed, spinComplete, winnerOnly]);
-  if (
-    !game?.options?.jackpot ||
-    !segments.length ||
-    !["jackpot_spinning", "completed"].includes(game.state)
-  )
-    return null;
-  const isCompleted = game.state === "completed";
+  const isCompleted = game?.state === "completed";
   const displayWinnerOnly = isCompleted || winnerOnly;
-  const displayWinnerExpanded = isCompleted || winnerExpanded;
   const winner = segments[winnerIndex] || segments[0];
+  const winnerStartWidth = winner
+    ? segmentWidth(winner.percentage)
+    : 100;
+  useLayoutEffect(() => {
+    if (!displayWinnerOnly || !winnerRef.current) return undefined;
+    const card = winnerRef.current;
+    setWinnerExpanded(false);
+    card.style.width = `${winnerStartWidth}px`;
+    void card.offsetWidth;
+    const frame = window.requestAnimationFrame(() => setWinnerExpanded(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [displayWinnerOnly, game?._id, winnerIndex, winnerStartWidth]);
+  if (!wheelVisible) return null;
   const cardStyle = (segment, winnerCard = false) => ({
     width: winnerCard
-      ? displayWinnerExpanded
+      ? winnerExpanded
         ? "100%"
         : `${segmentWidth(segment.percentage)}px`
       : `${segmentWidth(segment.percentage)}px`,
     "--segment-rgb": hexRgb(jackpotColors[segment.slot % jackpotColors.length]),
-    transition: winnerCard ? "width .6s cubic-bezier(.2,.6,.2,1)" : undefined,
+    transition: winnerCard ? "width .6s cubic-bezier(.215,.61,.355,1)" : undefined,
   });
   const renderCard = (segment, index, winnerCard = false) => (
     <div

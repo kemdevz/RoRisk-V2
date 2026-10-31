@@ -11,6 +11,7 @@ import SettingsModal from './components/SettingsModal'
 import WalletModal from './components/WalletModal'
 import StatisticsModal from './components/StatisticsModal'
 import TransactionsModal from './components/TransactionsModal'
+import BonusCases from './components/BonusCases'
 import { listenForPasswordRecovery, refreshSessionProfile, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 import { preloadSound } from './lib/Sounds'
@@ -96,6 +97,7 @@ if (initialReferralMatch) {
   window.history.replaceState({}, '', '/welcome')
 }
 const initialPathname = initialReferralMatch ? '/welcome' : window.location.pathname
+const bonusCasesSessionKey = 'rorisk_bonus_cases_seen_v1'
 
 function readStoredUser() {
   try {
@@ -117,9 +119,29 @@ function App() {
   const [siteModal, setSiteModal] = useState(null)
   const [siteModalClosing, setSiteModalClosing] = useState(false)
   const [user, setUser] = useState(readStoredUser)
+  const [bonusCasesOpen, setBonusCasesOpen] = useState(() => {
+    try {
+      return !readStoredUser() && window.sessionStorage.getItem(bonusCasesSessionKey) !== '1'
+    } catch {
+      return !readStoredUser()
+    }
+  })
   const [loaderPhase, setLoaderPhase] = useState('visible')
   const [pagePhase, setPagePhase] = useState('idle')
   const handleChatToggle = useCallback((open) => setIsChatOpen(open), [])
+
+  const closeBonusCases = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(bonusCasesSessionKey, '1')
+    } catch {
+      // The modal can still close when session storage is unavailable.
+    }
+    setBonusCasesOpen(false)
+  }, [])
+
+  const registerFromBonusCases = useCallback(() => {
+    setAuthModal('register')
+  }, [])
 
   useEffect(() => listenForPasswordRecovery(() => setAuthModal('recovery')), [])
 
@@ -452,6 +474,7 @@ function App() {
         </main>
       </div>
       <Chat user={user} onToggle={handleChatToggle} />
+      {bonusCasesOpen && !user && <BonusCases onClose={closeBonusCases} onRegister={registerFromBonusCases} />}
       {authModal && <SigninModal initialTab={authModal} onClose={() => setAuthModal(null)} onAuthenticated={handleAuthenticated} />}
       {siteModal && <ModalAnimation label={siteModal.type === 'wallet' ? 'Wallet' : siteModal.type === 'settings' ? 'Settings' : siteModal.type === 'statistics' ? 'User Statistics' : 'Transactions'} closeRequest={siteModalClosing} onClose={() => { setSiteModal(null); setSiteModalClosing(false) }}>
         {siteModal.type === 'wallet' ? <WalletModal initialTab={siteModal.tab} user={user} onRequestClose={closeSiteModal} /> : siteModal.type === 'settings' ? <SettingsModal user={user} onRequestClose={closeSiteModal} onConnectRoblox={openRobloxFromSettings} /> : siteModal.type === 'statistics' ? <StatisticsModal user={user} /> : <TransactionsModal user={user} />}

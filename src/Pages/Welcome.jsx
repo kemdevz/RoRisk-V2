@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ItemCard, Spinner, clearConfettiCanvases, createReel, launchConfetti, pickVisualItem, reelGeometry } from './CaseOpen'
 import { notify } from '../lib/Notifications'
 import { playSound } from '../lib/Sounds'
+import { getCachedWelcomeData, requestWelcomeData, storedWelcomeCurrency } from '../lib/WelcomePreload'
 
 const pageScope = { 'data-v-02fdf3c5': '' }
 const heroScope = { 'data-v-1c2febfe': '' }
@@ -23,8 +24,8 @@ function FastIcon() {
 }
 
 function Welcome({ user, onSignIn, onOpenWallet }) {
-  const [currency, setCurrency] = useState(() => window.localStorage.getItem('currency') === 'coins' ? 'coins' : 'rocoins')
-  const [data, setData] = useState(null)
+  const [currency, setCurrency] = useState(storedWelcomeCurrency)
+  const [data, setData] = useState(() => getCachedWelcomeData(storedWelcomeCurrency()))
   const [affiliateCode, setAffiliateCode] = useState(() => window.localStorage.getItem('rorisk_affiliate_code') || '')
   const [fast, setFast] = useState(false)
   const [riskSpin, setRiskSpin] = useState(true)
@@ -59,9 +60,7 @@ function Welcome({ user, onSignIn, onOpenWallet }) {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch(`/api/welcome?currency=${currency}`)
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Reward case is not available yet.')
+      const payload = await requestWelcomeData(currency)
       setData(payload)
       setTimeNow(Date.now())
       if (payload.affiliate?.redeemedCode) setAffiliateCode(payload.affiliate.redeemedCode)

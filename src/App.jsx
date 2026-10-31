@@ -15,11 +15,15 @@ import BonusCases from './components/BonusCases'
 import { listenForPasswordRecovery, refreshSessionProfile, signOut, syncGoogleProfile } from './lib/Supabase'
 import { notify } from './lib/Notifications'
 import { preloadSound } from './lib/Sounds'
+import { preloadWelcomeData } from './lib/WelcomePreload'
 
 const pageLoaders = {
   home: () => import('./Pages/Home'),
   rewards: () => import('./Pages/Rewards'),
-  welcome: () => import('./Pages/Welcome'),
+  welcome: () => import('./Pages/Welcome').then(async (module) => {
+    await preloadWelcomeData().catch(() => null)
+    return module
+  }),
   market: () => import('./Pages/Market'),
   affiliates: () => import('./Pages/Affiliates'),
   race: () => import('./Pages/Race'),
